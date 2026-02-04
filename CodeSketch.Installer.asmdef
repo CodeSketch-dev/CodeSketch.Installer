@@ -1,0 +1,14 @@
+{
+    "name": "CodeSketch.Installer",
+    "rootNamespace": "CodeSketch.Installer",
+    "references": [],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
