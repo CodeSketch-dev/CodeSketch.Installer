@@ -31,9 +31,22 @@ namespace CodeSketch.Installer.Editor
 
         HashSet<string> _ensuredRegistries = new();
 
-        // 🔑 Resolve scheduler
+        // ================= RESOLVE SCHEDULER =================
         bool _needResolve;
         bool _resolveScheduled;
+
+        // ================= FRAMEWORK INSTALL =================
+        bool _frameworkInstalled;
+
+        static readonly UPMInstallEntry CODESKETCH =
+            new UPMInstallEntry
+            {
+                Name = "CodeSketch",
+                InstallType = UPMPackageInstallType.GitURL,
+                GitUrl = "https://github.com/CodeSketch-dev/CodeSketch.git#main",
+                PackageName = "CodeSketch",
+                IsDependency = false
+            };
 
         // =====================================================
         // INIT
@@ -361,7 +374,7 @@ namespace CodeSketch.Installer.Editor
         }
 
         // =====================================================
-        // RESOLVE SCHEDULER (KEY FIX)
+        // RESOLVE + FRAMEWORK INSTALL
         // =====================================================
 
         void MarkResolveNeeded()
@@ -373,6 +386,7 @@ namespace CodeSketch.Installer.Editor
         {
             if (!_needResolve || _resolveScheduled)
             {
+                TryInstallFramework();
                 RefreshPackageState();
                 return;
             }
@@ -385,8 +399,46 @@ namespace CodeSketch.Installer.Editor
                 _needResolve = false;
 
                 Client.Resolve();
-                EditorApplication.delayCall += RefreshPackageState;
+
+                EditorApplication.delayCall += () =>
+                {
+                    TryInstallFramework();
+                    RefreshPackageState();
+                };
             };
+        }
+
+        void TryInstallFramework()
+        {
+            if (_frameworkInstalled)
+                return;
+
+            if (IsInstalled(CODESKETCH))
+            {
+                _frameworkInstalled = true;
+                return;
+            }
+
+            if (_addRequest != null || _removeRequest != null)
+                return;
+
+            Debug.Log("[Installer] Installing CodeSketch Framework...");
+
+            _frameworkInstalled = true;
+            _addRequest = Client.Add(CODESKETCH.GitUrl);
+            EditorApplication.update += OnFrameworkAddProgress;
+        }
+
+        void OnFrameworkAddProgress()
+        {
+            if (_addRequest == null || !_addRequest.IsCompleted)
+                return;
+
+            EditorApplication.update -= OnFrameworkAddProgress;
+            _addRequest = null;
+
+            Debug.Log("[Installer] CodeSketch Framework installed");
+            RefreshPackageState();
         }
 
         // =====================================================
@@ -467,6 +519,7 @@ namespace CodeSketch.Installer.Editor
             EditorApplication.update -= OnRequiredAddProgress;
             EditorApplication.update -= OnFeatureAddProgress;
             EditorApplication.update -= OnFeatureRemoveProgress;
+            EditorApplication.update -= OnFrameworkAddProgress;
             EditorApplication.update -= OnListProgress;
 
             _addRequest = null;
@@ -480,6 +533,7 @@ namespace CodeSketch.Installer.Editor
 
             _needResolve = false;
             _resolveScheduled = false;
+            _frameworkInstalled = false;
         }
 
         // =====================================================
