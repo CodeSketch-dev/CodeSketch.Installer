@@ -1,0 +1,11 @@
+{
+  "name": "com.codesketch.installer",
+  "displayName": "CodeSketch Installer",
+  "version": "0.1.0",
+  "unity": "2022.3",
+  "description": "Installer and bootstrapper for CodeSketch framework",
+  "author": {
+    "name": "CodeSketch",
+    "url": "https://github.com/CodeSketch-dev"
+  }
+}
