@@ -13,5 +13,124 @@ MonoBehaviour:
   m_Name: CodeSketchInstallerSettings
   m_EditorClassIdentifier: 
   AlwaysShowOnStartup: 1
-  MobileNotifications: 0
-  Internet: 1
+  RequiredPackages:
+  - Name: 'Addressables '
+    InstallType: 0
+    PackageName: com.unity.addressables
+    Version: 1.22.3
+    GitUrl: 
+    RegistryName: 
+    RegistryUrl: 
+    RegistryScopes: []
+    IsDependency: 0
+  - Name: PrimeTween
+    InstallType: 2
+    PackageName: com.kyrylokuzyk.primetween
+    Version: 1.3.7
+    GitUrl: 
+    RegistryName: UPMPrimeTween
+    RegistryUrl: https://registry.npmjs.org/
+    RegistryScopes:
+    - com.kyrylokuzyk
+    IsDependency: 0
+  - Name: Vertx Debugging
+    InstallType: 0
+    PackageName: com.vertx.debugging
+    Version: 
+    GitUrl: 
+    RegistryName: Vertx
+    RegistryUrl: https://package.openupm.com
+    RegistryScopes:
+    - com.vertx
+    IsDependency: 0
+  - Name: Newtonsoft Json
+    InstallType: 0
+    PackageName: com.unity.nuget.newtonsoft-json
+    Version: 3.2.2
+    GitUrl: 
+    RegistryName: 
+    RegistryUrl: 
+    RegistryScopes: []
+    IsDependency: 0
+  - Name: Cinemachine
+    InstallType: 0
+    PackageName: com.unity.cinemachine
+    Version: 2.10.5
+    GitUrl: 
+    RegistryName: 
+    RegistryUrl: 
+    RegistryScopes: []
+    IsDependency: 0
+  - Name: UniTask
+    InstallType: 0
+    PackageName: com.cysharp.unitask
+    Version: 
+    GitUrl: https://github.com/Cysharp/UniTask.git?path=src/UniTask/Assets/Plugins/UniTask
+    RegistryName: 
+    RegistryUrl: 
+    RegistryScopes: []
+    IsDependency: 0
+  Features:
+  - Key: 'Mobile Notifications '
+    Label: 'Mobile Notifications '
+    DefineSymbols:
+    - CODESKETCH_NOTIFICATIONS
+    UsePackages: 1
+    Packages:
+    - Name: 'Mobile Notifications '
+      InstallType: 0
+      PackageName: com.unity.mobile.notifications
+      Version: 2.4.3
+      GitUrl: 
+      RegistryName: 
+      RegistryUrl: 
+      RegistryScopes: []
+      IsDependency: 0
+  - Key: Mobile Internet
+    Label: Required Internet
+    DefineSymbols:
+    - CODESKETCH_INTERNET
+    UsePackages: 0
+    Packages: []
+  - Key: Google Appstore
+    Label: Google Appstore
+    DefineSymbols:
+    - CODESKETCH_APPSTORE
+    UsePackages: 1
+    Packages:
+    - Name: Google Play Common
+      InstallType: 2
+      PackageName: com.google.play.common
+      Version: 1.9.2
+      GitUrl: 
+      RegistryName: InAppReview
+      RegistryUrl: https://package.openupm.com
+      RegistryScopes:
+      - com.google.play.common
+      - com.google.play.core
+      - com.google.play.review
+      IsDependency: 1
+    - Name: Google Play Core
+      InstallType: 2
+      PackageName: com.google.play.core
+      Version: 1.8.6
+      GitUrl: 
+      RegistryName: InAppReview
+      RegistryUrl: https://package.openupm.com
+      RegistryScopes:
+      - com.google.play.common
+      - com.google.play.core
+      - com.google.play.review
+      IsDependency: 1
+    - Name: Google Play In-app Review
+      InstallType: 2
+      PackageName: com.google.play.review
+      Version: 1.8.4
+      GitUrl: 
+      RegistryName: InAppReview
+      RegistryUrl: https://package.openupm.com
+      RegistryScopes:
+      - com.google.play.common
+      - com.google.play.core
+      - com.google.play.review
+      IsDependency: 1

@@ -25,24 +25,15 @@ namespace CodeSketch.Installer.Editor
 
         HashSet<string> _installedPackages = new();
 
-        // =====================================================
-        // FEATURE DESCRIPTOR
-        // =====================================================
+        Queue<UPMInstallEntry> _requiredInstallQueue = new();
+        Queue<UPMInstallEntry> _featureInstallQueue  = new();
+        Queue<UPMInstallEntry> _featureRemoveQueue   = new();
 
-        class FeatureToggle
-        {
-            public string Label;
+        HashSet<string> _ensuredRegistries = new();
 
-            public string Define;
-
-            public string PackageName;
-            public string PackageVersion;
-
-            public bool HasDefine  => !string.IsNullOrEmpty(Define);
-            public bool HasPackage => !string.IsNullOrEmpty(PackageName);
-        }
-
-        List<FeatureToggle> _features;
+        // 🔑 Resolve scheduler
+        bool _needResolve;
+        bool _resolveScheduled;
 
         // =====================================================
         // INIT
@@ -51,9 +42,7 @@ namespace CodeSketch.Installer.Editor
         [MenuItem("CodeSketch/Tools/Installer")]
         static void Open()
         {
-            _instance = GetWindow<CodeSketch_InstallerWindow>(
-                "CodeSketch Installer"
-            );
+            _instance = GetWindow<CodeSketch_InstallerWindow>("CodeSketch Installer");
         }
 
         [InitializeOnLoadMethod]
@@ -73,52 +62,14 @@ namespace CodeSketch.Installer.Editor
         void OnEnable()
         {
             _instance = this;
-
             ResetRequests();
-
             _settings = LoadOrCreateSettings();
-
-            BuildFeatureList();
             RefreshPackageState();
         }
 
         void OnDisable()
         {
             ResetRequests();
-        }
-
-        // =====================================================
-        // FEATURE CONFIG (CHỈ SỬA CHỖ NÀY KHI MUỐN THÊM)
-        // =====================================================
-
-        void BuildFeatureList()
-        {
-            _features = new List<FeatureToggle>
-            {
-                new FeatureToggle
-                {
-                    Label = "Internet",
-                    Define = "CODESKETCH_INTERNET"
-                },
-
-                new FeatureToggle
-                {
-                    Label = "Mobile Notifications",
-                    Define = "CODESKETCH_NOTIFICATIONS",
-                    PackageName = "com.unity.mobile.notifications",
-                    PackageVersion = "2.4.2"
-                },
-
-                // Ví dụ: package only
-                /*
-                new FeatureToggle
-                {
-                    Label = "Addressables",
-                    PackageName = "com.unity.addressables",
-                    PackageVersion = "1.21.19"
-                }
-                */
-            };
         }
 
         // =====================================================
@@ -139,25 +90,119 @@ namespace CodeSketch.Installer.Editor
                     _settings.AlwaysShowOnStartup
                 );
 
-            GUILayout.Space(10);
+            DrawRequiredPackagesSection();
+
+            GUILayout.Space(12);
             GUILayout.Label("Features", EditorStyles.boldLabel);
 
-            foreach (var feature in _features)
+            if (_settings.Features == null || _settings.Features.Count == 0)
             {
-                DrawFeatureToggle(feature);
+                EditorGUILayout.HelpBox(
+                    "No features defined in Installer Settings.",
+                    MessageType.Info
+                );
+            }
+            else
+            {
+                foreach (var feature in _settings.Features)
+                    DrawFeatureToggle(feature);
             }
 
             EditorUtility.SetDirty(_settings);
         }
 
         // =====================================================
-        // CORE TOGGLE LOGIC (DUY NHẤT)
+        // REQUIRED PACKAGES
         // =====================================================
 
-        void DrawFeatureToggle(FeatureToggle feature)
+        void DrawRequiredPackagesSection()
+        {
+            GUILayout.Space(12);
+            GUILayout.Label("Required Packages", EditorStyles.boldLabel);
+
+            if (_settings.RequiredPackages == null || _settings.RequiredPackages.Count == 0)
+            {
+                EditorGUILayout.HelpBox("No required packages defined.", MessageType.Info);
+                return;
+            }
+
+            int missing = _settings.RequiredPackages
+                .Count(p => !IsInstalled(p));
+
+            EditorGUILayout.LabelField($"Missing packages: {missing}");
+
+            EditorGUI.BeginDisabledGroup(IsBusy() || missing == 0);
+
+            if (GUILayout.Button("Install Missing Required Packages"))
+                StartInstallRequiredPackages();
+
+            EditorGUI.EndDisabledGroup();
+        }
+
+        void StartInstallRequiredPackages()
+        {
+            _requiredInstallQueue.Clear();
+            _ensuredRegistries.Clear();
+
+            foreach (var pkg in _settings.RequiredPackages)
+            {
+                if (string.IsNullOrEmpty(pkg.PackageName))
+                    continue;
+
+                if (IsInstalled(pkg))
+                    continue;
+
+                _requiredInstallQueue.Enqueue(pkg);
+            }
+
+            InstallNextRequiredPackage();
+        }
+
+        void InstallNextRequiredPackage()
+        {
+            if (_requiredInstallQueue.Count == 0)
+            {
+                ScheduleResolveIfNeeded();
+                return;
+            }
+
+            var pkg = _requiredInstallQueue.Dequeue();
+            EnsureRegistryIfNeeded(pkg);
+
+            if (pkg.IsDependency)
+            {
+                CodeSketch_ManifestUtility.EnsureDependency(
+                    pkg.PackageName,
+                    pkg.Version
+                );
+
+                MarkResolveNeeded();
+                InstallNextRequiredPackage();
+                return;
+            }
+
+            _addRequest = Client.Add(pkg.GetInstallString());
+            EditorApplication.update += OnRequiredAddProgress;
+        }
+
+        void OnRequiredAddProgress()
+        {
+            if (_addRequest == null || !_addRequest.IsCompleted)
+                return;
+
+            EditorApplication.update -= OnRequiredAddProgress;
+            _addRequest = null;
+
+            InstallNextRequiredPackage();
+        }
+
+        // =====================================================
+        // FEATURES
+        // =====================================================
+
+        void DrawFeatureToggle(InstallerFeatureDefinition feature)
         {
             bool busy = IsBusy();
-
             EditorGUI.BeginDisabledGroup(busy);
 
             bool currentValue = GetFeatureState(feature);
@@ -175,54 +220,202 @@ namespace CodeSketch.Installer.Editor
             ApplyFeature(feature, newValue);
         }
 
-        bool GetFeatureState(FeatureToggle feature)
+        bool GetFeatureState(InstallerFeatureDefinition feature)
         {
-            if (feature.HasPackage)
-                return _installedPackages.Contains(feature.PackageName);
-
-            if (feature.HasDefine)
-                return HasDefine(feature.Define);
+            if (feature.HasDefines)
+                return feature.DefineSymbols.All(CodeSketch_DefineSymbolUtility.HasDefine);
 
             return false;
         }
 
-        void ApplyFeature(FeatureToggle feature, bool enable)
+        void ApplyFeature(InstallerFeatureDefinition feature, bool enable)
         {
-            // DEFINE
-            if (feature.HasDefine)
+            if (feature.HasDefines)
             {
-                CodeSketch_DefineSymbolUtility.SetDefine(
-                    feature.Define,
+                CodeSketch_DefineSymbolUtility.SetDefines(
+                    feature.DefineSymbols,
                     enable
                 );
             }
 
-            // PACKAGE
-            if (feature.HasPackage)
+            if (!feature.HasPackages)
             {
-                if (enable)
-                {
-                    _addRequest = Client.Add(
-                        string.IsNullOrEmpty(feature.PackageVersion)
-                            ? feature.PackageName
-                            : $"{feature.PackageName}@{feature.PackageVersion}"
-                    );
-                    EditorApplication.update += OnAddProgress;
-                }
-                else
-                {
-                    _removeRequest = Client.Remove(
-                        feature.PackageName
-                    );
-                    EditorApplication.update += OnRemoveProgress;
-                }
+                Repaint();
+                return;
             }
+
+            if (enable)
+                StartInstallFeaturePackages(feature);
+            else
+                StartRemoveFeaturePackages(feature);
 
             Repaint();
         }
 
+        void StartInstallFeaturePackages(InstallerFeatureDefinition feature)
+        {
+            _featureInstallQueue.Clear();
+            _ensuredRegistries.Clear();
+
+            foreach (var pkg in feature.Packages)
+            {
+                if (string.IsNullOrEmpty(pkg.PackageName))
+                    continue;
+
+                if (IsInstalled(pkg))
+                    continue;
+
+                _featureInstallQueue.Enqueue(pkg);
+            }
+
+            InstallNextFeaturePackage();
+        }
+
+        void InstallNextFeaturePackage()
+        {
+            if (_featureInstallQueue.Count == 0)
+            {
+                ScheduleResolveIfNeeded();
+                return;
+            }
+
+            var pkg = _featureInstallQueue.Dequeue();
+            EnsureRegistryIfNeeded(pkg);
+
+            if (pkg.IsDependency)
+            {
+                CodeSketch_ManifestUtility.EnsureDependency(
+                    pkg.PackageName,
+                    pkg.Version
+                );
+
+                MarkResolveNeeded();
+                InstallNextFeaturePackage();
+                return;
+            }
+
+            _addRequest = Client.Add(pkg.GetInstallString());
+            EditorApplication.update += OnFeatureAddProgress;
+        }
+
+        void OnFeatureAddProgress()
+        {
+            if (_addRequest == null || !_addRequest.IsCompleted)
+                return;
+
+            EditorApplication.update -= OnFeatureAddProgress;
+            _addRequest = null;
+
+            InstallNextFeaturePackage();
+        }
+
+        void StartRemoveFeaturePackages(InstallerFeatureDefinition feature)
+        {
+            _featureRemoveQueue.Clear();
+
+            foreach (var pkg in feature.Packages)
+            {
+                if (string.IsNullOrEmpty(pkg.PackageName))
+                    continue;
+
+                if (!IsInstalled(pkg))
+                    continue;
+
+                _featureRemoveQueue.Enqueue(pkg);
+            }
+
+            RemoveNextFeaturePackage();
+        }
+
+        void RemoveNextFeaturePackage()
+        {
+            if (_featureRemoveQueue.Count == 0)
+            {
+                ScheduleResolveIfNeeded();
+                return;
+            }
+
+            var pkg = _featureRemoveQueue.Dequeue();
+
+            if (pkg.IsDependency)
+            {
+                CodeSketch_ManifestUtility.RemoveDependency(pkg.PackageName);
+                MarkResolveNeeded();
+                RemoveNextFeaturePackage();
+                return;
+            }
+
+            _removeRequest = Client.Remove(pkg.PackageName);
+            EditorApplication.update += OnFeatureRemoveProgress;
+        }
+
+        void OnFeatureRemoveProgress()
+        {
+            if (_removeRequest == null || !_removeRequest.IsCompleted)
+                return;
+
+            EditorApplication.update -= OnFeatureRemoveProgress;
+            _removeRequest = null;
+
+            RemoveNextFeaturePackage();
+        }
+
         // =====================================================
-        // PACKAGE MANAGER
+        // RESOLVE SCHEDULER (KEY FIX)
+        // =====================================================
+
+        void MarkResolveNeeded()
+        {
+            _needResolve = true;
+        }
+
+        void ScheduleResolveIfNeeded()
+        {
+            if (!_needResolve || _resolveScheduled)
+            {
+                RefreshPackageState();
+                return;
+            }
+
+            _resolveScheduled = true;
+
+            EditorApplication.delayCall += () =>
+            {
+                _resolveScheduled = false;
+                _needResolve = false;
+
+                Client.Resolve();
+                EditorApplication.delayCall += RefreshPackageState;
+            };
+        }
+
+        // =====================================================
+        // REGISTRY
+        // =====================================================
+
+        void EnsureRegistryIfNeeded(UPMInstallEntry pkg)
+        {
+            if (pkg.InstallType != UPMPackageInstallType.ScopedRegistry)
+                return;
+
+            string key =
+                $"{pkg.RegistryUrl}|{string.Join(",", pkg.RegistryScopes ?? new string[0])}";
+
+            if (_ensuredRegistries.Contains(key))
+                return;
+
+            CodeSketch_ManifestUtility.EnsureScopedRegistry(
+                pkg.RegistryName,
+                pkg.RegistryUrl,
+                pkg.RegistryScopes
+            );
+
+            _ensuredRegistries.Add(key);
+            AssetDatabase.Refresh();
+        }
+
+        // =====================================================
+        // PACKAGE STATE
         // =====================================================
 
         void RefreshPackageState()
@@ -239,7 +432,6 @@ namespace CodeSketch.Installer.Editor
             EditorApplication.update -= OnListProgress;
 
             _installedPackages.Clear();
-
             foreach (var p in _listRequest.Result)
                 _installedPackages.Add(p.name);
 
@@ -247,26 +439,12 @@ namespace CodeSketch.Installer.Editor
             Repaint();
         }
 
-        void OnAddProgress()
+        bool IsInstalled(UPMInstallEntry pkg)
         {
-            if (_addRequest == null || !_addRequest.IsCompleted)
-                return;
+            if (pkg.IsDependency)
+                return CodeSketch_ManifestUtility.HasDependency(pkg.PackageName);
 
-            EditorApplication.update -= OnAddProgress;
-            _addRequest = null;
-
-            RefreshPackageState();
-        }
-
-        void OnRemoveProgress()
-        {
-            if (_removeRequest == null || !_removeRequest.IsCompleted)
-                return;
-
-            EditorApplication.update -= OnRemoveProgress;
-            _removeRequest = null;
-
-            RefreshPackageState();
+            return _installedPackages.Contains(pkg.PackageName);
         }
 
         // =====================================================
@@ -275,28 +453,33 @@ namespace CodeSketch.Installer.Editor
 
         bool IsBusy()
         {
-            return _addRequest != null || _removeRequest != null || _listRequest != null;
-        }
-
-        bool HasDefine(string define)
-        {
-            var group = EditorUserBuildSettings.selectedBuildTargetGroup;
-
-            return PlayerSettings
-                .GetScriptingDefineSymbolsForGroup(group)
-                .Split(';')
-                .Contains(define);
+            return _addRequest != null
+                || _removeRequest != null
+                || _listRequest != null
+                || _requiredInstallQueue.Count > 0
+                || _featureInstallQueue.Count > 0
+                || _featureRemoveQueue.Count > 0
+                || _resolveScheduled;
         }
 
         void ResetRequests()
         {
-            EditorApplication.update -= OnAddProgress;
-            EditorApplication.update -= OnRemoveProgress;
+            EditorApplication.update -= OnRequiredAddProgress;
+            EditorApplication.update -= OnFeatureAddProgress;
+            EditorApplication.update -= OnFeatureRemoveProgress;
             EditorApplication.update -= OnListProgress;
 
             _addRequest = null;
             _removeRequest = null;
             _listRequest = null;
+
+            _requiredInstallQueue.Clear();
+            _featureInstallQueue.Clear();
+            _featureRemoveQueue.Clear();
+            _ensuredRegistries.Clear();
+
+            _needResolve = false;
+            _resolveScheduled = false;
         }
 
         // =====================================================
@@ -306,35 +489,22 @@ namespace CodeSketch.Installer.Editor
         static CodeSketchInstallerSettings LoadOrCreateSettings()
         {
             var settings =
-                Resources.Load<CodeSketchInstallerSettings>(
-                    SETTINGS_RESOURCE_PATH
-                );
+                Resources.Load<CodeSketchInstallerSettings>(SETTINGS_RESOURCE_PATH);
 
             if (settings != null)
                 return settings;
 
             settings = CreateInstance<CodeSketchInstallerSettings>();
 
-            var folder =
-                "Assets/CodeSketch.Installer/Editor/Resources";
+            var folder = "Assets/CodeSketch.Installer/Editor/Resources";
 
             if (!AssetDatabase.IsValidFolder(folder))
             {
-                AssetDatabase.CreateFolder(
-                    "Assets/CodeSketch.Installer",
-                    "Editor"
-                );
-                AssetDatabase.CreateFolder(
-                    "Assets/CodeSketch.Installer/Editor",
-                    "Resources"
-                );
+                AssetDatabase.CreateFolder("Assets/CodeSketch.Installer", "Editor");
+                AssetDatabase.CreateFolder("Assets/CodeSketch.Installer/Editor", "Resources");
             }
 
-            AssetDatabase.CreateAsset(
-                settings,
-                SETTINGS_ASSET_PATH
-            );
-
+            AssetDatabase.CreateAsset(settings, SETTINGS_ASSET_PATH);
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
 

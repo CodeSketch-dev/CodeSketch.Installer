@@ -1,6 +1,6 @@
 {
     "name": "CodeSketch.Installer",
-    "rootNamespace": "CodeSketch.Installer",
+    "rootNamespace": "CodeSketch.Installer.Runtime",
     "references": [],
     "includePlatforms": [],
     "excludePlatforms": [],
