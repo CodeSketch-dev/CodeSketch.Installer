@@ -34,7 +34,7 @@ MonoBehaviour:
     - com.kyrylokuzyk
     IsDependency: 0
   - Name: Vertx Debugging
-    InstallType: 0
+    InstallType: 2
     PackageName: com.vertx.debugging
     Version: 
     GitUrl: 
@@ -62,7 +62,7 @@ MonoBehaviour:
     RegistryScopes: []
     IsDependency: 0
   - Name: UniTask
-    InstallType: 0
+    InstallType: 1
     PackageName: com.cysharp.unitask
     Version: 
     GitUrl: https://github.com/Cysharp/UniTask.git?path=src/UniTask/Assets/Plugins/UniTask
