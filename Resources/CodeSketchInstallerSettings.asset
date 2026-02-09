@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: a77074b5df5941b45b3be6ff232ba927, type: 3}
   m_Name: CodeSketchInstallerSettings
   m_EditorClassIdentifier: 
-  AlwaysShowOnStartup: 1
+  AlwaysShowOnStartup: 0
   RequiredPackages:
   - Name: 'Addressables '
     InstallType: 0
@@ -71,66 +71,7 @@ MonoBehaviour:
     RegistryScopes: []
     IsDependency: 0
   Features:
-  - Key: 'Mobile Notifications '
-    Label: 'Mobile Notifications '
-    DefineSymbols:
-    - CODESKETCH_NOTIFICATIONS
-    UsePackages: 1
-    Packages:
-    - Name: 'Mobile Notifications '
-      InstallType: 0
-      PackageName: com.unity.mobile.notifications
-      Version: 2.4.3
-      GitUrl: 
-      RegistryName: 
-      RegistryUrl: 
-      RegistryScopes: []
-      IsDependency: 0
-  - Key: Mobile Internet
-    Label: Required Internet
-    DefineSymbols:
-    - CODESKETCH_INTERNET
-    UsePackages: 0
-    Packages: []
-  - Key: Google Appstore
-    Label: Google Appstore
-    DefineSymbols:
-    - CODESKETCH_APPSTORE
-    UsePackages: 1
-    Packages:
-    - Name: Google Play Common
-      InstallType: 2
-      PackageName: com.google.play.common
-      Version: 1.9.2
-      GitUrl: 
-      RegistryName: InAppReview
-      RegistryUrl: https://package.openupm.com
-      RegistryScopes:
-      - com.google.play.common
-      - com.google.play.core
-      - com.google.play.review
-      IsDependency: 1
-    - Name: Google Play Core
-      InstallType: 2
-      PackageName: com.google.play.core
-      Version: 1.8.6
-      GitUrl: 
-      RegistryName: InAppReview
-      RegistryUrl: https://package.openupm.com
-      RegistryScopes:
-      - com.google.play.common
-      - com.google.play.core
-      - com.google.play.review
-      IsDependency: 1
-    - Name: Google Play In-app Review
-      InstallType: 2
-      PackageName: com.google.play.review
-      Version: 1.8.4
-      GitUrl: 
-      RegistryName: InAppReview
-      RegistryUrl: https://package.openupm.com
-      RegistryScopes:
-      - com.google.play.common
-      - com.google.play.core
-      - com.google.play.review
-      IsDependency: 1
+  - {fileID: 11400000, guid: dc4d080553f3242459cdc618b8af1536, type: 2}
+  - {fileID: 11400000, guid: b18720f4455a133478b6120bed3fb1d8, type: 2}
+  - {fileID: 11400000, guid: c3e8f8bca697c4d4b9a729b692dd5ec0, type: 2}
+  - {fileID: 11400000, guid: 83de3fedaffccb549806984603b390cb, type: 2}

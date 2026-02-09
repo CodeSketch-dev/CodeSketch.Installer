@@ -30,6 +30,6 @@ namespace CodeSketch.Installer.Runtime
 
         [Header("Feature Toggles (Scripting Define Symbols)")]
         [Tooltip("Danh sách feature bật/tắt bằng define symbols")]
-        public List<InstallerFeatureDefinition> Features = new();
+        public List<InstallerFeatureDefinitionAsset> Features = new();
     }
 }

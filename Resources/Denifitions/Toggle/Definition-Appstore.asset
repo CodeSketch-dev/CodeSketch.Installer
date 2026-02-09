@@ -1,0 +1,54 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 73195a24901c1164ab6bacc0b19d2858, type: 3}
+  m_Name: Definition-Appstore
+  m_EditorClassIdentifier: 
+  DefineSymbols:
+  - CODESKETCH_APPSTORE
+  UsePackages: 1
+  Packages:
+  - Name: Google Play Common
+    InstallType: 2
+    PackageName: com.google.play.common
+    Version: 1.9.2
+    GitUrl: 
+    RegistryName: InAppReview
+    RegistryUrl: https://package.openupm.com
+    RegistryScopes:
+    - com.google.play.common
+    - com.google.play.core
+    - com.google.play.review
+    IsDependency: 1
+  - Name: Google Play Core
+    InstallType: 2
+    PackageName: com.goole.play.core
+    Version: 1.8.6
+    GitUrl: 
+    RegistryName: InAppReview
+    RegistryUrl: https://package.openupm.com
+    RegistryScopes:
+    - com.google.play.common
+    - com.google.play.core
+    - com.google.play.review
+    IsDependency: 1
+  - Name: Google Play In-app Review
+    InstallType: 2
+    PackageName: com.google.play.review
+    Version: 1.8.4
+    GitUrl: 
+    RegistryName: InAppReview
+    RegistryUrl: https://package.openupm.com
+    RegistryScopes:
+    - com.google.play.common
+    - com.google.play.core
+    - com.google.play.review
+    IsDependency: 1

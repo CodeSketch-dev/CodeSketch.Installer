@@ -1,11 +1,12 @@
 #if UNITY_EDITOR
-using CodeSketch.Installer.Runtime;
+using System;
+using System.Collections.Generic;
+using System.Linq;
 using UnityEditor;
 using UnityEditor.PackageManager;
 using UnityEditor.PackageManager.Requests;
 using UnityEngine;
-using System.Linq;
-using System.Collections.Generic;
+using CodeSketch.Installer.Runtime;
 
 namespace CodeSketch.Installer.Editor
 {
@@ -16,29 +17,33 @@ namespace CodeSketch.Installer.Editor
         CodeSketchInstallerSettings _settings;
 
         const string SETTINGS_RESOURCE_PATH = "CodeSketchInstallerSettings";
-
         const string SETTINGS_ASSET_PATH =
             "Assets/CodeSketch.Installer/Editor/Resources/CodeSketchInstallerSettings.asset";
+
+        const string NUGET_UNITYPACKAGE_PATH =
+            "Assets/CodeSketch.Installer/Packages/NuGetForUnity.4.5.0.unitypackage";
 
         AddRequest _addRequest;
         RemoveRequest _removeRequest;
         ListRequest _listRequest;
 
-        HashSet<string> _installedPackages = new();
+        readonly HashSet<string> _installedPackages = new();
 
-        Queue<UPMInstallEntry> _requiredInstallQueue = new();
-        Queue<UPMInstallEntry> _featureInstallQueue = new();
-        Queue<UPMInstallEntry> _featureRemoveQueue = new();
+        readonly Queue<UPMInstallEntry> _requiredInstallQueue = new();
+        readonly Queue<UPMInstallEntry> _featureInstallQueue = new();
+        readonly Queue<UPMInstallEntry> _featureRemoveQueue = new();
 
-        HashSet<string> _ensuredRegistries = new();
+        readonly HashSet<string> _ensuredRegistries = new();
 
-        // ================= RESOLVE SCHEDULER =================
         bool _needResolve;
         bool _resolveScheduled;
+        bool _nugetAutoInstallChecked;
 
-        // ================= FRAMEWORK INSTALL =================
-        bool _frameworkInstalled;
+        // ================= BUSY OVERLAY =================
+        bool _showBusyOverlay;
+        string _busyMessage = "Working...";
 
+        // ================= FRAMEWORK =================
         static readonly UPMInstallEntry CODESKETCH =
             new UPMInstallEntry
             {
@@ -54,7 +59,7 @@ namespace CodeSketch.Installer.Editor
         // =====================================================
 
         [MenuItem("CodeSketch/Tools/Installer")]
-        static void Open()
+        public static void Open()
         {
             _instance = GetWindow<CodeSketch_InstallerWindow>("CodeSketch Installer");
         }
@@ -64,12 +69,10 @@ namespace CodeSketch.Installer.Editor
         {
             EditorApplication.delayCall += () =>
             {
-                if (_instance != null)
-                {
-                    _instance.ResetRequests();
-                    _instance.RefreshPackageState();
-                    _instance.Repaint();
-                }
+                if (_instance == null) return;
+                _instance.ResetRequests();
+                _instance.RefreshPackageState();
+                _instance.Repaint();
             };
         }
 
@@ -79,11 +82,14 @@ namespace CodeSketch.Installer.Editor
             ResetRequests();
             _settings = LoadOrCreateSettings();
             RefreshPackageState();
+
+            EditorApplication.delayCall += TryAutoInstallNuGetForUnity;
         }
 
         void OnDisable()
         {
             ResetRequests();
+            EditorApplication.delayCall -= TryAutoInstallNuGetForUnity;
         }
 
         // =====================================================
@@ -95,116 +101,233 @@ namespace CodeSketch.Installer.Editor
             if (_settings == null)
                 return;
 
+            DrawHeader();
+            DrawRequiredPackagesSection();
+            DrawFrameworkSection();
+            DrawFeaturesSection();
+
+            EditorUtility.SetDirty(_settings);
+
+            DrawBusyOverlay();
+        }
+
+        void DrawHeader()
+        {
             GUILayout.Label("CodeSketch Installer", EditorStyles.boldLabel);
-            GUILayout.Space(6);
+            GUILayout.Space(4);
 
             _settings.AlwaysShowOnStartup =
-                EditorGUILayout.Toggle(
-                    "Always show on startup",
-                    _settings.AlwaysShowOnStartup
-                );
+                EditorGUILayout.Toggle("Always show on startup", _settings.AlwaysShowOnStartup);
 
-            DrawRequiredPackagesSection();
-            DrawCodeSketchSection(); // 👈 NEW
+            GUILayout.Space(8);
+        }
+
+        // =====================================================
+        // REQUIRED PACKAGES
+        // =====================================================
+
+        void DrawRequiredPackagesSection()
+        {
+            GUILayout.Label("Required Packages", EditorStyles.boldLabel);
+
+            if (_settings.RequiredPackages == null || _settings.RequiredPackages.Count == 0)
+            {
+                EditorGUILayout.HelpBox("No required packages defined.", MessageType.Info);
+                return;
+            }
+
+            int missing = _settings.RequiredPackages.Count(p => !IsInstalled(p));
+            EditorGUILayout.LabelField($"Missing packages: {missing}");
+
+            EditorGUI.BeginDisabledGroup(IsBusy() || missing == 0);
+            if (GUILayout.Button("Install Missing Required Packages"))
+                StartInstallRequiredPackages();
+            EditorGUI.EndDisabledGroup();
+
+            GUILayout.Space(10);
+        }
+
+        // =====================================================
+        // FRAMEWORK
+        // =====================================================
+
+        void DrawFrameworkSection()
+        {
+            GUILayout.Label("CodeSketch Framework", EditorStyles.boldLabel);
+
+            bool installed = IsInstalled(CODESKETCH);
+
+            EditorGUI.BeginDisabledGroup(installed || IsBusy());
+            if (GUILayout.Button(
+                    installed ? "CodeSketch Installed" : "Install CodeSketch Framework",
+                    GUILayout.Height(26)))
+            {
+                InstallCodeSketchFramework();
+            }
+            EditorGUI.EndDisabledGroup();
+
+            if (installed)
+            {
+                EditorGUILayout.HelpBox(
+                    "CodeSketch framework is already installed.",
+                    MessageType.Info);
+            }
 
             GUILayout.Space(12);
+        }
+
+        void InstallCodeSketchFramework()
+        {
+            if (IsInstalled(CODESKETCH))
+                return;
+
+            BeginBusy("Installing CodeSketch Framework...");
+
+            _addRequest = Client.Add(CODESKETCH.GitUrl);
+            EditorApplication.update += OnFrameworkAddProgress;
+        }
+
+        void OnFrameworkAddProgress()
+        {
+            if (_addRequest == null || !_addRequest.IsCompleted)
+                return;
+
+            EditorApplication.update -= OnFrameworkAddProgress;
+            _addRequest = null;
+
+            EndBusy();
+            RefreshPackageState();
+        }
+
+        // =====================================================
+        // FEATURES
+        // =====================================================
+
+        void DrawFeaturesSection()
+        {
             GUILayout.Label("Features", EditorStyles.boldLabel);
 
             if (_settings.Features == null || _settings.Features.Count == 0)
             {
-                EditorGUILayout.HelpBox(
-                    "No features defined in Installer Settings.",
-                    MessageType.Info
-                );
-            }
-            else
-            {
-                foreach (var feature in _settings.Features)
-                    DrawFeatureToggle(feature);
+                EditorGUILayout.HelpBox("No features defined.", MessageType.Info);
+                return;
             }
 
-            EditorUtility.SetDirty(_settings);
+            foreach (var feature in _settings.Features)
+                DrawFeature(feature);
         }
 
-        // =====================================================
-        // CODESKETCH UI (NEW)
-        // =====================================================
-
-        // =====================================================
-// FEATURES
-// =====================================================
-
-        void DrawFeatureToggle(InstallerFeatureDefinition feature)
+        void DrawFeature(InstallerFeatureDefinitionAsset feature)
         {
-            bool busy = IsBusy();
-            EditorGUI.BeginDisabledGroup(busy);
+            EditorGUI.BeginDisabledGroup(IsBusy());
 
-            bool currentValue = GetFeatureState(feature);
+            switch (feature.Mode)
+            {
+                case InstallerFeatureMode.Toggle:
+                    DrawToggleFeature(feature.Label, feature.Toggle);
+                    break;
 
-            bool newValue = EditorGUILayout.Toggle(
-                feature.Label,
-                currentValue
-            );
+                case InstallerFeatureMode.Options:
+                    DrawOptionsFeature(feature.Label, feature.Options);
+                    break;
+            }
 
             EditorGUI.EndDisabledGroup();
-
-            if (busy || newValue == currentValue)
-                return;
-
-            ApplyFeature(feature, newValue);
         }
 
-        bool GetFeatureState(InstallerFeatureDefinition feature)
+        void DrawToggleFeature(string label, InstallerFeatureToggleAsset toggle)
         {
-            if (feature.HasDefines)
-                return feature.DefineSymbols.All(CodeSketch_DefineSymbolUtility.HasDefine);
-
-            return false;
-        }
-
-        void ApplyFeature(InstallerFeatureDefinition feature, bool enable)
-        {
-            // ================= DEFINE SYMBOLS =================
-            if (feature.HasDefines)
-            {
-                CodeSketch_DefineSymbolUtility.SetDefines(
-                    feature.DefineSymbols,
-                    enable
-                );
-            }
-
-            // ================= NO PACKAGES =================
-            if (!feature.HasPackages)
-            {
-                Repaint();
+            if (toggle == null)
                 return;
-            }
 
-            if (enable)
-                StartInstallFeaturePackages(feature);
+            bool current =
+                toggle.HasDefines &&
+                toggle.DefineSymbols.All(CodeSketch_DefineSymbolUtility.HasDefine);
+
+            bool next = EditorGUILayout.Toggle(label, current);
+            if (next == current)
+                return;
+
+            if (toggle.HasDefines)
+                CodeSketch_DefineSymbolUtility.SetDefines(toggle.DefineSymbols, next);
+
+            if (!toggle.HasPackages)
+                return;
+
+            BeginBusy(next ? "Installing packages..." : "Removing packages...");
+            if (next)
+                StartInstallPackages(toggle.Packages);
             else
-                StartRemoveFeaturePackages(feature);
-
-            Repaint();
+                StartRemovePackages(toggle.Packages);
         }
 
-        void StartInstallFeaturePackages(InstallerFeatureDefinition feature)
+        void DrawOptionsFeature(string label, InstallerFeatureOptionsAsset options)
+        {
+            if (options == null || !options.HasOptions)
+                return;
+
+            int currentIndex = GetCurrentOptionIndex(options);
+            string[] labels = options.Options.Select(o => o.Label).ToArray();
+
+            int newIndex = EditorGUILayout.Popup(label, currentIndex, labels);
+            if (newIndex == currentIndex)
+                return;
+
+            BeginBusy("Switching feature option...");
+            ApplyOption(options, currentIndex, newIndex);
+        }
+
+        int GetCurrentOptionIndex(InstallerFeatureOptionsAsset asset)
+        {
+            for (int i = 0; i < asset.Options.Length; i++)
+            {
+                var opt = asset.Options[i];
+                if (opt.HasDefine &&
+                    CodeSketch_DefineSymbolUtility.HasDefine(opt.DefineSymbol))
+                    return i;
+            }
+
+            return Mathf.Clamp(asset.DefaultOptionIndex, 0, asset.Options.Length - 1);
+        }
+
+        void ApplyOption(InstallerFeatureOptionsAsset asset, int oldIndex, int newIndex)
+        {
+            var oldOpt = asset.Options[oldIndex];
+            var newOpt = asset.Options[newIndex];
+
+            if (oldOpt.HasDefine)
+                CodeSketch_DefineSymbolUtility.RemoveDefine(oldOpt.DefineSymbol);
+
+            if (oldOpt.HasPackages)
+                StartRemovePackages(oldOpt.Packages);
+
+            if (newOpt.HasDefine)
+                CodeSketch_DefineSymbolUtility.AddDefine(newOpt.DefineSymbol);
+
+            if (newOpt.HasPackages)
+                StartInstallPackages(newOpt.Packages);
+        }
+
+        // =====================================================
+        // PACKAGE FLOW
+        // =====================================================
+
+        void StartInstallPackages(List<UPMInstallEntry> packages)
         {
             _featureInstallQueue.Clear();
-            _ensuredRegistries.Clear();
-
-            foreach (var pkg in feature.Packages)
-            {
-                if (string.IsNullOrEmpty(pkg.PackageName))
-                    continue;
-
-                if (IsInstalled(pkg))
-                    continue;
-
-                _featureInstallQueue.Enqueue(pkg);
-            }
+            foreach (var p in packages)
+                _featureInstallQueue.Enqueue(p);
 
             InstallNextFeaturePackage();
+        }
+
+        void StartRemovePackages(List<UPMInstallEntry> packages)
+        {
+            _featureRemoveQueue.Clear();
+            foreach (var p in packages)
+                _featureRemoveQueue.Enqueue(p);
+
+            RemoveNextFeaturePackage();
         }
 
         void InstallNextFeaturePackage()
@@ -220,11 +343,7 @@ namespace CodeSketch.Installer.Editor
 
             if (pkg.IsDependency)
             {
-                CodeSketch_ManifestUtility.EnsureDependency(
-                    pkg.PackageName,
-                    pkg.Version
-                );
-
+                CodeSketch_ManifestUtility.EnsureDependency(pkg.PackageName, pkg.Version);
                 MarkResolveNeeded();
                 InstallNextFeaturePackage();
                 return;
@@ -243,24 +362,6 @@ namespace CodeSketch.Installer.Editor
             _addRequest = null;
 
             InstallNextFeaturePackage();
-        }
-
-        void StartRemoveFeaturePackages(InstallerFeatureDefinition feature)
-        {
-            _featureRemoveQueue.Clear();
-
-            foreach (var pkg in feature.Packages)
-            {
-                if (string.IsNullOrEmpty(pkg.PackageName))
-                    continue;
-
-                if (!IsInstalled(pkg))
-                    continue;
-
-                _featureRemoveQueue.Enqueue(pkg);
-            }
-
-            RemoveNextFeaturePackage();
         }
 
         void RemoveNextFeaturePackage()
@@ -296,83 +397,205 @@ namespace CodeSketch.Installer.Editor
             RemoveNextFeaturePackage();
         }
 
+        // =====================================================
+        // BUSY OVERLAY
+        // =====================================================
 
-        void DrawCodeSketchSection()
+        void BeginBusy(string message)
         {
-            GUILayout.Space(12);
-            GUILayout.Label("CodeSketch Framework", EditorStyles.boldLabel);
-
-            bool installed = IsInstalled(CODESKETCH);
-            bool busy = IsBusy();
-
-            EditorGUI.BeginDisabledGroup(installed || busy);
-
-            string label =
-                installed
-                    ? "CodeSketch Installed"
-                    : "Install CodeSketch Framework";
-
-            if (GUILayout.Button(label, GUILayout.Height(28)))
-            {
-                InstallCodeSketchManually();
-            }
-
-            EditorGUI.EndDisabledGroup();
-
-            if (installed)
-            {
-                EditorGUILayout.HelpBox(
-                    "CodeSketch framework is already installed.",
-                    MessageType.Info
-                );
-            }
+            _busyMessage = message;
+            _showBusyOverlay = true;
+            Repaint();
         }
 
-        void InstallCodeSketchManually()
+        void EndBusy()
         {
-            if (IsInstalled(CODESKETCH))
+            _showBusyOverlay = false;
+            Repaint();
+        }
+
+        void DrawBusyOverlay()
+        {
+            if (!_showBusyOverlay)
                 return;
 
-            if (_addRequest != null || _removeRequest != null)
-                return;
+            var rect = new Rect(0, 0, position.width, position.height);
+            EditorGUI.DrawRect(rect, new Color(0, 0, 0, 0.35f));
 
-            Debug.Log("[Installer] Manual install CodeSketch Framework");
-
-            _frameworkInstalled = true;
-            _addRequest = Client.Add(CODESKETCH.GitUrl);
-            EditorApplication.update += OnFrameworkAddProgress;
+            GUILayout.BeginArea(rect);
+            GUILayout.FlexibleSpace();
+            GUILayout.BeginVertical(EditorStyles.helpBox);
+            GUILayout.Label(_busyMessage, EditorStyles.boldLabel);
+            GUILayout.Label("Please wait...", EditorStyles.miniLabel);
+            GUILayout.EndVertical();
+            GUILayout.FlexibleSpace();
+            GUILayout.EndArea();
         }
 
         // =====================================================
-        // REQUIRED PACKAGES
+        // UTIL
         // =====================================================
 
-        void DrawRequiredPackagesSection()
+        bool IsInstalled(UPMInstallEntry pkg)
         {
-            GUILayout.Space(12);
-            GUILayout.Label("Required Packages", EditorStyles.boldLabel);
+            if (pkg.IsDependency)
+                return CodeSketch_ManifestUtility.HasDependency(pkg.PackageName);
 
-            if (_settings.RequiredPackages == null || _settings.RequiredPackages.Count == 0)
+            return _installedPackages.Contains(pkg.PackageName);
+        }
+
+        bool IsBusy()
+        {
+            return _showBusyOverlay
+                   || _addRequest != null
+                   || _removeRequest != null
+                   || _listRequest != null;
+        }
+
+        void MarkResolveNeeded() => _needResolve = true;
+
+        void ScheduleResolveIfNeeded()
+        {
+            if (!_needResolve || _resolveScheduled)
             {
-                EditorGUILayout.HelpBox("No required packages defined.", MessageType.Info);
+                EndBusy();
+                RefreshPackageState();
                 return;
             }
 
-            int missing = _settings.RequiredPackages
-                .Count(p => !IsInstalled(p));
-
-            EditorGUILayout.LabelField($"Missing packages: {missing}");
-
-            EditorGUI.BeginDisabledGroup(IsBusy() || missing == 0);
-
-            if (GUILayout.Button("Install Missing Required Packages"))
-                StartInstallRequiredPackages();
-
-            EditorGUI.EndDisabledGroup();
+            _resolveScheduled = true;
+            EditorApplication.delayCall += () =>
+            {
+                _resolveScheduled = false;
+                _needResolve = false;
+                Client.Resolve();
+                EditorApplication.delayCall += () =>
+                {
+                    EndBusy();
+                    RefreshPackageState();
+                };
+            };
         }
 
+        void EnsureRegistryIfNeeded(UPMInstallEntry pkg)
+        {
+            if (pkg.InstallType != UPMPackageInstallType.ScopedRegistry)
+                return;
+
+            string key = $"{pkg.RegistryUrl}|{string.Join(",", pkg.RegistryScopes ?? new string[0])}";
+            if (_ensuredRegistries.Contains(key))
+                return;
+
+            CodeSketch_ManifestUtility.EnsureScopedRegistry(
+                pkg.RegistryName,
+                pkg.RegistryUrl,
+                pkg.RegistryScopes);
+
+            _ensuredRegistries.Add(key);
+        }
+
+        void RefreshPackageState()
+        {
+            _listRequest = Client.List(true);
+            EditorApplication.update += OnListProgress;
+        }
+
+        void OnListProgress()
+        {
+            if (_listRequest == null || !_listRequest.IsCompleted)
+                return;
+
+            EditorApplication.update -= OnListProgress;
+            _installedPackages.Clear();
+
+            foreach (var p in _listRequest.Result)
+                _installedPackages.Add(p.name);
+
+            _listRequest = null;
+            Repaint();
+        }
+
+        void ResetRequests()
+        {
+            _addRequest = null;
+            _removeRequest = null;
+            _listRequest = null;
+
+            _requiredInstallQueue.Clear();
+            _featureInstallQueue.Clear();
+            _featureRemoveQueue.Clear();
+            _ensuredRegistries.Clear();
+
+            _needResolve = false;
+            _resolveScheduled = false;
+            _showBusyOverlay = false;
+        }
+
+        // =====================================================
+        // SETTINGS
+        // =====================================================
+
+        static CodeSketchInstallerSettings LoadOrCreateSettings()
+        {
+            var settings = Resources.Load<CodeSketchInstallerSettings>(SETTINGS_RESOURCE_PATH);
+            if (settings != null)
+                return settings;
+
+            settings = CreateInstance<CodeSketchInstallerSettings>();
+
+            if (!AssetDatabase.IsValidFolder("Assets/CodeSketch.Installer/Editor/Resources"))
+            {
+                AssetDatabase.CreateFolder("Assets/CodeSketch.Installer", "Editor");
+                AssetDatabase.CreateFolder("Assets/CodeSketch.Installer/Editor", "Resources");
+            }
+
+            AssetDatabase.CreateAsset(settings, SETTINGS_ASSET_PATH);
+            AssetDatabase.SaveAssets();
+            AssetDatabase.Refresh();
+            return settings;
+        }
+
+        // =====================================================
+        // NUGET
+        // =====================================================
+
+        bool IsNuGetForUnityInstalled()
+        {
+            return Type.GetType(
+                "NugetForUnity.NugetForUnityEditor, NuGetForUnity"
+            ) != null;
+        }
+
+        void TryAutoInstallNuGetForUnity()
+        {
+            if (_nugetAutoInstallChecked)
+                return;
+
+            _nugetAutoInstallChecked = true;
+
+            if (EditorApplication.isCompiling)
+                return;
+
+            if (IsNuGetForUnityInstalled())
+                return;
+
+            BeginBusy("Installing NuGetForUnity...");
+            AssetDatabase.ImportPackage(NUGET_UNITYPACKAGE_PATH, false);
+
+            EditorApplication.delayCall += () =>
+            {
+                EndBusy();
+                AssetDatabase.Refresh();
+            };
+        }
+        
         void StartInstallRequiredPackages()
         {
+            if (IsBusy())
+                return;
+
+            BeginBusy("Installing required packages...");
+
             _requiredInstallQueue.Clear();
             _ensuredRegistries.Clear();
 
@@ -426,171 +649,6 @@ namespace CodeSketch.Installer.Editor
             _addRequest = null;
 
             InstallNextRequiredPackage();
-        }
-
-        // =====================================================
-        // FEATURES (UNCHANGED)
-        // =====================================================
-
-        // ... (giữ nguyên toàn bộ phần Features như bạn gửi)
-
-        // =====================================================
-        // RESOLVE + AUTO INSTALL
-        // =====================================================
-
-        void MarkResolveNeeded()
-        {
-            _needResolve = true;
-        }
-
-        void ScheduleResolveIfNeeded()
-        {
-            if (!_needResolve || _resolveScheduled)
-            {
-                RefreshPackageState();
-                return;
-            }
-
-            _resolveScheduled = true;
-
-            EditorApplication.delayCall += () =>
-            {
-                _resolveScheduled = false;
-                _needResolve = false;
-
-                Client.Resolve();
-                EditorApplication.delayCall += RefreshPackageState;
-            };
-        }
-
-        // =====================================================
-        // FRAMEWORK CALLBACK
-        // =====================================================
-
-        void OnFrameworkAddProgress()
-        {
-            if (_addRequest == null || !_addRequest.IsCompleted)
-                return;
-
-            EditorApplication.update -= OnFrameworkAddProgress;
-            _addRequest = null;
-
-            Debug.Log("[Installer] CodeSketch Framework installed");
-            RefreshPackageState();
-        }
-
-        // =====================================================
-        // REGISTRY + STATE
-        // =====================================================
-
-        void EnsureRegistryIfNeeded(UPMInstallEntry pkg)
-        {
-            if (pkg.InstallType != UPMPackageInstallType.ScopedRegistry)
-                return;
-
-            string key =
-                $"{pkg.RegistryUrl}|{string.Join(",", pkg.RegistryScopes ?? new string[0])}";
-
-            if (_ensuredRegistries.Contains(key))
-                return;
-
-            CodeSketch_ManifestUtility.EnsureScopedRegistry(
-                pkg.RegistryName,
-                pkg.RegistryUrl,
-                pkg.RegistryScopes
-            );
-
-            _ensuredRegistries.Add(key);
-            AssetDatabase.Refresh();
-        }
-
-        void RefreshPackageState()
-        {
-            _listRequest = Client.List(true);
-            EditorApplication.update += OnListProgress;
-        }
-
-        void OnListProgress()
-        {
-            if (_listRequest == null || !_listRequest.IsCompleted)
-                return;
-
-            EditorApplication.update -= OnListProgress;
-
-            _installedPackages.Clear();
-            foreach (var p in _listRequest.Result)
-                _installedPackages.Add(p.name);
-
-            _listRequest = null;
-            Repaint();
-        }
-
-        bool IsInstalled(UPMInstallEntry pkg)
-        {
-            if (pkg.IsDependency)
-                return CodeSketch_ManifestUtility.HasDependency(pkg.PackageName);
-
-            return _installedPackages.Contains(pkg.PackageName);
-        }
-
-        bool IsBusy()
-        {
-            return _addRequest != null
-                   || _removeRequest != null
-                   || _listRequest != null
-                   || _requiredInstallQueue.Count > 0
-                   || _featureInstallQueue.Count > 0
-                   || _featureRemoveQueue.Count > 0
-                   || _resolveScheduled;
-        }
-
-        void ResetRequests()
-        {
-            EditorApplication.update -= OnRequiredAddProgress;
-            EditorApplication.update -= OnFrameworkAddProgress;
-            EditorApplication.update -= OnListProgress;
-
-            _addRequest = null;
-            _removeRequest = null;
-            _listRequest = null;
-
-            _requiredInstallQueue.Clear();
-            _featureInstallQueue.Clear();
-            _featureRemoveQueue.Clear();
-            _ensuredRegistries.Clear();
-
-            _needResolve = false;
-            _resolveScheduled = false;
-            _frameworkInstalled = false;
-        }
-
-        // =====================================================
-        // SETTINGS
-        // =====================================================
-
-        static CodeSketchInstallerSettings LoadOrCreateSettings()
-        {
-            var settings =
-                Resources.Load<CodeSketchInstallerSettings>(SETTINGS_RESOURCE_PATH);
-
-            if (settings != null)
-                return settings;
-
-            settings = CreateInstance<CodeSketchInstallerSettings>();
-
-            var folder = "Assets/CodeSketch.Installer/Editor/Resources";
-
-            if (!AssetDatabase.IsValidFolder(folder))
-            {
-                AssetDatabase.CreateFolder("Assets/CodeSketch.Installer", "Editor");
-                AssetDatabase.CreateFolder("Assets/CodeSketch.Installer/Editor", "Resources");
-            }
-
-            AssetDatabase.CreateAsset(settings, SETTINGS_ASSET_PATH);
-            AssetDatabase.SaveAssets();
-            AssetDatabase.Refresh();
-
-            return settings;
         }
     }
 }

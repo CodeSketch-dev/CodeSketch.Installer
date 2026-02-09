@@ -14,6 +14,8 @@ namespace CodeSketch.Installer.Editor
     /// </summary>
     public static class CodeSketch_DefineSymbolUtility
     {
+        static BuildTargetGroup Group => EditorUserBuildSettings.selectedBuildTargetGroup;
+        
         // =====================================================
         // PUBLIC API
         // =====================================================
@@ -69,6 +71,47 @@ namespace CodeSketch.Installer.Editor
                 .Split(';', StringSplitOptions.RemoveEmptyEntries)
                 .Contains(define);
 #endif
+        }
+        
+        public static void AddDefine(string symbol)
+        {
+            if (string.IsNullOrEmpty(symbol))
+                return;
+
+            var defines =
+                PlayerSettings.GetScriptingDefineSymbolsForGroup(Group);
+
+            if (!defines.Contains(symbol))
+            {
+                defines = string.IsNullOrEmpty(defines)
+                    ? symbol
+                    : $"{defines};{symbol}";
+
+                PlayerSettings.SetScriptingDefineSymbolsForGroup(
+                    Group, defines
+                );
+            }
+        }
+
+        public static void RemoveDefine(string symbol)
+        {
+            if (string.IsNullOrEmpty(symbol))
+                return;
+
+            var defines =
+                PlayerSettings.GetScriptingDefineSymbolsForGroup(Group);
+
+            if (!defines.Contains(symbol))
+                return;
+
+            defines = defines
+                .Replace(symbol, "")
+                .Replace(";;", ";")
+                .Trim(';');
+
+            PlayerSettings.SetScriptingDefineSymbolsForGroup(
+                Group, defines
+            );
         }
 
         // =====================================================

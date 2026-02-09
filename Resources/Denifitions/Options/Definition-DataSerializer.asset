@@ -1,0 +1,28 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: db17a3625c48a324e9e04d6b4e47187e, type: 3}
+  m_Name: Definition-DataSerializer
+  m_EditorClassIdentifier: 
+  Options:
+  - Label: System
+    DefineSymbol: 
+    UsePackages: 0
+    Packages: []
+  - Label: OdinSerializer
+    DefineSymbol: CODESKETCH_ODINSERIALIZER
+    UsePackages: 0
+    Packages: []
+  - Label: Memory Pack
+    DefineSymbol: CODESKETCH_MEMORYPACK
+    UsePackages: 0
+    Packages: []
+  DefaultOptionIndex: 0

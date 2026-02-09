@@ -5,29 +5,36 @@ using UnityEngine;
 namespace CodeSketch.Installer.Runtime
 {
     /// <summary>
-    /// Feature toggle hiển thị trên Installer Window.
-    /// - Bật/tắt define symbols
-    /// - Có thể kèm package install/remove
+    /// Feature hiển thị trên Installer Window.
+    /// - Toggle mode: bật/tắt define + package
+    /// - Options mode: chọn 1 option duy nhất (enum-like)
     /// </summary>
     [Serializable]
     public class InstallerFeatureDefinition
     {
         [Header("Info")]
-        public string Key;
         public string Label;
 
-        // ================= DEFINE =================
+        // ================= MODE =================
+
+        [Header("Feature Mode")]
+        public InstallerFeatureMode Mode = InstallerFeatureMode.Toggle;
+
+        // ================= TOGGLE MODE =================
 
         [Header("Scripting Define Symbols")]
         public string[] DefineSymbols;
 
-        // ================= OPTIONAL PACKAGE =================
-
         [Header("Optional Package")]
         public bool UsePackages;
-
-        [Tooltip("Cách cài package cho feature này")]
         public List<UPMInstallEntry> Packages;
+
+        // ================= OPTIONS MODE =================
+
+        [Header("Options (Enum-like)")]
+        public InstallerFeatureOption[] Options;
+
+        public int DefaultOptionIndex;
 
         // ================= HELPERS =================
 
@@ -36,5 +43,8 @@ namespace CodeSketch.Installer.Runtime
 
         public bool HasPackages =>
             UsePackages && Packages != null && Packages.Count > 0;
+
+        public bool HasOptions =>
+            Options != null && Options.Length > 0;
     }
 }
