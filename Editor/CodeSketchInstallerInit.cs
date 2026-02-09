@@ -33,7 +33,7 @@ namespace CodeSketch.Installer.Editor
                 return;
 
             // Mở Installer Window
-            CodeSketch_InstallerWindow.Open();
+            CodeSketchInstallerWindow.Open();
         }
     }
 }

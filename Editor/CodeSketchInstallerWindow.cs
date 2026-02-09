@@ -10,9 +10,9 @@ using CodeSketch.Installer.Runtime;
 
 namespace CodeSketch.Installer.Editor
 {
-    public class CodeSketch_InstallerWindow : EditorWindow
+    public class CodeSketchInstallerWindow : EditorWindow
     {
-        static CodeSketch_InstallerWindow _instance;
+        static CodeSketchInstallerWindow _instance;
 
         CodeSketchInstallerSettings _settings;
 
@@ -61,7 +61,7 @@ namespace CodeSketch.Installer.Editor
         [MenuItem("CodeSketch/Tools/Installer")]
         public static void Open()
         {
-            _instance = GetWindow<CodeSketch_InstallerWindow>("CodeSketch Installer");
+            _instance = GetWindow<CodeSketchInstallerWindow>("CodeSketch Installer");
         }
 
         [InitializeOnLoadMethod]
