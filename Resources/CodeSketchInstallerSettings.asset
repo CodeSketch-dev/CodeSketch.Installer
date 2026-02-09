@@ -14,62 +14,13 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   AlwaysShowOnStartup: 1
   RequiredPackages:
-  - Name: 'Addressables '
-    InstallType: 0
-    PackageName: com.unity.addressables
-    Version: 1.22.3
-    GitUrl: 
-    RegistryName: 
-    RegistryUrl: 
-    RegistryScopes: []
-    IsDependency: 0
-  - Name: PrimeTween
-    InstallType: 2
-    PackageName: com.kyrylokuzyk.primetween
-    Version: 1.3.7
-    GitUrl: 
-    RegistryName: UPMPrimeTween
-    RegistryUrl: https://registry.npmjs.org/
-    RegistryScopes:
-    - com.kyrylokuzyk
-    IsDependency: 0
-  - Name: Vertx Debugging
-    InstallType: 2
-    PackageName: com.vertx.debugging
-    Version: 
-    GitUrl: 
-    RegistryName: Vertx
-    RegistryUrl: https://package.openupm.com
-    RegistryScopes:
-    - com.vertx
-    IsDependency: 0
-  - Name: Newtonsoft Json
-    InstallType: 0
-    PackageName: com.unity.nuget.newtonsoft-json
-    Version: 3.2.2
-    GitUrl: 
-    RegistryName: 
-    RegistryUrl: 
-    RegistryScopes: []
-    IsDependency: 0
-  - Name: Cinemachine
-    InstallType: 0
-    PackageName: com.unity.cinemachine
-    Version: 2.10.5
-    GitUrl: 
-    RegistryName: 
-    RegistryUrl: 
-    RegistryScopes: []
-    IsDependency: 0
-  - Name: UniTask
-    InstallType: 1
-    PackageName: com.cysharp.unitask
-    Version: 
-    GitUrl: https://github.com/Cysharp/UniTask.git?path=src/UniTask/Assets/Plugins/UniTask
-    RegistryName: 
-    RegistryUrl: 
-    RegistryScopes: []
-    IsDependency: 0
+  - {fileID: 11400000, guid: 224133ee3991d3b429a8b385d0c01bb9, type: 2}
+  - {fileID: 11400000, guid: 68ed8c301eaa7f041b8652a727e50130, type: 2}
+  - {fileID: 11400000, guid: e202424ba29ace24183ac4fb50576708, type: 2}
+  - {fileID: 11400000, guid: 3f07f99292bf1024f8f4ef4864b424a7, type: 2}
+  - {fileID: 11400000, guid: 94b2b964e71f4bf42bcddb1c4616cf1a, type: 2}
+  - {fileID: 11400000, guid: b63f693a170ecaa48a1b9d8d24db6cd6, type: 2}
+  - {fileID: 11400000, guid: baa590ffae956b64d9c29290090301ac, type: 2}
   Features:
   - {fileID: 11400000, guid: dc4d080553f3242459cdc618b8af1536, type: 2}
   - {fileID: 11400000, guid: b18720f4455a133478b6120bed3fb1d8, type: 2}
