@@ -1,4 +1,5 @@
 #if UNITY_EDITOR
+using System;
 using System.IO;
 using System.Linq;
 using UnityEngine;
@@ -26,10 +27,7 @@ namespace CodeSketch.Installer.Editor
         public static bool EnsureDependency(string packageName, string version)
         {
             if (!File.Exists(MANIFEST_PATH))
-            {
-                Debug.LogError("manifest.json not found");
                 return false;
-            }
 
             var root = JObject.Parse(File.ReadAllText(MANIFEST_PATH));
 
@@ -38,7 +36,6 @@ namespace CodeSketch.Installer.Editor
 
             var deps = (JObject)root["dependencies"];
 
-            // Already exists
             if (deps[packageName] != null)
                 return false;
 
@@ -46,7 +43,6 @@ namespace CodeSketch.Installer.Editor
 
             File.WriteAllText(MANIFEST_PATH, root.ToString());
             Debug.Log($"[Installer] Dependency added: {packageName}");
-
             return true;
         }
 
@@ -62,22 +58,21 @@ namespace CodeSketch.Installer.Editor
                 return false;
 
             deps.Remove(packageName);
-
             File.WriteAllText(MANIFEST_PATH, root.ToString());
-            Debug.Log($"[Installer] Dependency removed: {packageName}");
 
+            Debug.Log($"[Installer] Dependency removed: {packageName}");
             return true;
         }
 
         // =====================================================
-        // SCOPED REGISTRY
+        // SCOPED REGISTRY (AUTO-MOVE VERSION)
         // =====================================================
 
         /// <summary>
-        /// Ensure a scoped registry exists in manifest.json.
-        /// - Nếu registry chưa có → add mới
-        /// - Nếu registry có nhưng thiếu scope → add scope
-        /// - An toàn khi gọi nhiều lần
+        /// Ensure scoped registry with AUTO-HEAL behaviour:
+        /// - One scope belongs to ONE registry only
+        /// - If scope exists in another registry → REMOVE there → ADD here
+        /// - Safe, deterministic, idempotent
         /// </summary>
         public static bool EnsureScopedRegistry(
             string name,
@@ -97,41 +92,78 @@ namespace CodeSketch.Installer.Editor
                 root["scopedRegistries"] = new JArray();
 
             var registries = (JArray)root["scopedRegistries"];
-
-            var registry = registries
-                .FirstOrDefault(r => r["url"]?.ToString() == url) as JObject;
-
             bool dirty = false;
 
-            if (registry == null)
+            // =====================================================
+            // 1. Find or create target registry (by URL)
+            // =====================================================
+
+            var targetRegistry = registries
+                .OfType<JObject>()
+                .FirstOrDefault(r => r["url"]?.ToString() == url);
+
+            if (targetRegistry == null)
             {
-                registry = new JObject
+                targetRegistry = new JObject
                 {
                     ["name"] = name,
                     ["url"] = url,
                     ["scopes"] = new JArray()
                 };
 
-                registries.Add(registry);
+                registries.Add(targetRegistry);
                 dirty = true;
             }
 
-            if (registry["scopes"] == null)
+            if (targetRegistry["scopes"] == null)
             {
-                registry["scopes"] = new JArray();
+                targetRegistry["scopes"] = new JArray();
                 dirty = true;
             }
 
-            var scopeArray = (JArray)registry["scopes"];
+            var targetScopes = (JArray)targetRegistry["scopes"];
+
+            // =====================================================
+            // 2. For each scope → remove from WRONG registries
+            // =====================================================
 
             if (scopes != null)
             {
                 foreach (var scope in scopes)
                 {
-                    if (scopeArray.All(s => s.ToString() != scope))
+                    foreach (var registry in registries.OfType<JObject>())
                     {
-                        scopeArray.Add(scope);
+                        var regUrl = registry["url"]?.ToString();
+                        if (regUrl == url)
+                            continue;
+
+                        if (registry["scopes"] is not JArray arr)
+                            continue;
+
+                        var token = arr.FirstOrDefault(s => s.ToString() == scope);
+                        if (token != null)
+                        {
+                            arr.Remove(token);
+                            dirty = true;
+
+                            Debug.LogWarning(
+                                $"[Installer] Scope '{scope}' removed from wrong registry '{regUrl}'"
+                            );
+                        }
+                    }
+
+                    // =================================================
+                    // 3. Add scope to target registry if missing
+                    // =================================================
+
+                    if (targetScopes.All(s => s.ToString() != scope))
+                    {
+                        targetScopes.Add(scope);
                         dirty = true;
+
+                        Debug.Log(
+                            $"[Installer] Scope '{scope}' added to registry '{url}'"
+                        );
                     }
                 }
             }
@@ -140,8 +172,7 @@ namespace CodeSketch.Installer.Editor
                 return false;
 
             File.WriteAllText(MANIFEST_PATH, root.ToString());
-            Debug.Log($"[Installer] Scoped registry ensured: {url}");
-
+            Debug.Log($"[Installer] Scoped registry healed: {url}");
             return true;
         }
     }

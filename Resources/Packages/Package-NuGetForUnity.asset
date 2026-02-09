@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   Name: NuGetForUnity
   InstallType: 1
-  PackageName: 
+  PackageName: com.github-glitchenzo.nugetforunity
   Version: 
   GitUrl: https://github.com/GlitchEnzo/NuGetForUnity.git?path=/src/NuGetForUnity
   RegistryName: 

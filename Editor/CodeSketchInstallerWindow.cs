@@ -22,7 +22,7 @@ namespace CodeSketch.Installer.Editor
 
         AddRequest _addRequest;
         RemoveRequest _removeRequest;
-        ListRequest _listRequest;
+        ListRequest _listRequest ;
 
         readonly HashSet<string> _installedPackages = new();
 
@@ -600,8 +600,11 @@ namespace CodeSketch.Installer.Editor
             EditorApplication.update -= OnListProgress;
             _installedPackages.Clear();
 
-            foreach (var p in _listRequest.Result)
-                _installedPackages.Add(p.name);
+            if (_listRequest.Result != null)
+            {
+                foreach (var p in _listRequest.Result)
+                    _installedPackages.Add(p.name);
+            }
 
             _listRequest = null;
             Repaint();
