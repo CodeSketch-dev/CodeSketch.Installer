@@ -15,7 +15,7 @@ MonoBehaviour:
   Name: PrimeTween
   InstallType: 2
   PackageName: com.kyrylokuzyk.primetween
-  Version: 
+  Version: 1.3.7
   GitUrl: 
   RegistryName: NPM PrimeTween
   RegistryUrl: https://registry.npmjs.org/
