@@ -22,7 +22,7 @@ namespace CodeSketch.Installer.Runtime
 
         [Header("Required Packages (Auto Install)")]
         [Tooltip("Danh sách package bắt buộc của project")]
-        public List<UPMInstallEntry> RequiredPackages = new();
+        public List<UPMInstallEntryAsset> RequiredPackages = new();
 
         // =====================================================
         // FEATURE DEFINITIONS (DEFINE SYMBOLS)

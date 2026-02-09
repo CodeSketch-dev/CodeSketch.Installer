@@ -69,7 +69,7 @@ namespace CodeSketch.Installer.Editor
                     AssetDatabase.Refresh();
                 }
 
-                Client.Add(pkg.GetInstallString());
+                Client.Add(pkg.ToEntry().GetInstallString());
             }
         }
     }

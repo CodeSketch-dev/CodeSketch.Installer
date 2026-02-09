@@ -20,9 +20,6 @@ namespace CodeSketch.Installer.Editor
         const string SETTINGS_ASSET_PATH =
             "Assets/CodeSketch.Installer/Editor/Resources/CodeSketchInstallerSettings.asset";
 
-        const string NUGET_UNITYPACKAGE_PATH =
-            "Assets/CodeSketch.Installer/Packages/NuGetForUnity.4.5.0.unitypackage";
-
         AddRequest _addRequest;
         RemoveRequest _removeRequest;
         ListRequest _listRequest;
@@ -35,15 +32,16 @@ namespace CodeSketch.Installer.Editor
 
         readonly HashSet<string> _ensuredRegistries = new();
 
+        readonly List<UPMInstallEntry> _missingRequiredPackages = new();
+
         bool _needResolve;
         bool _resolveScheduled;
-        bool _nugetAutoInstallChecked;
 
         // ================= BUSY OVERLAY =================
         bool _showBusyOverlay;
         string _busyMessage = "Working...";
 
-        // ================= FRAMEWORK =================
+        // ================= FRAMEWORK (HARDCODE) =================
         static readonly UPMInstallEntry CODESKETCH =
             new UPMInstallEntry
             {
@@ -82,14 +80,11 @@ namespace CodeSketch.Installer.Editor
             ResetRequests();
             _settings = LoadOrCreateSettings();
             RefreshPackageState();
-
-            EditorApplication.delayCall += TryAutoInstallNuGetForUnity;
         }
 
         void OnDisable()
         {
             ResetRequests();
-            EditorApplication.delayCall -= TryAutoInstallNuGetForUnity;
         }
 
         // =====================================================
@@ -107,7 +102,6 @@ namespace CodeSketch.Installer.Editor
             DrawFeaturesSection();
 
             EditorUtility.SetDirty(_settings);
-
             DrawBusyOverlay();
         }
 
@@ -126,6 +120,30 @@ namespace CodeSketch.Installer.Editor
         // REQUIRED PACKAGES
         // =====================================================
 
+        void RefreshMissingRequiredPackages()
+        {
+            _missingRequiredPackages.Clear();
+
+            if (_settings.RequiredPackages == null)
+                return;
+
+            foreach (var asset in _settings.RequiredPackages)
+            {
+                if (asset == null)
+                    continue;
+
+                var entry = asset.ToEntry();
+
+                if (string.IsNullOrEmpty(entry.PackageName))
+                    continue;
+
+                if (IsInstalled(entry))
+                    continue;
+
+                _missingRequiredPackages.Add(entry);
+            }
+        }
+
         void DrawRequiredPackagesSection()
         {
             GUILayout.Label("Required Packages", EditorStyles.boldLabel);
@@ -136,8 +154,27 @@ namespace CodeSketch.Installer.Editor
                 return;
             }
 
-            int missing = _settings.RequiredPackages.Count(p => !IsInstalled(p));
+            RefreshMissingRequiredPackages();
+
+            int missing = _missingRequiredPackages.Count;
             EditorGUILayout.LabelField($"Missing packages: {missing}");
+
+            if (missing > 0)
+            {
+                EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+
+                foreach (var pkg in _missingRequiredPackages)
+                {
+                    string label =
+                        string.IsNullOrEmpty(pkg.Name)
+                            ? pkg.PackageName
+                            : $"{pkg.Name} ({pkg.PackageName})";
+
+                    EditorGUILayout.LabelField("• " + label, EditorStyles.miniLabel);
+                }
+
+                EditorGUILayout.EndVertical();
+            }
 
             EditorGUI.BeginDisabledGroup(IsBusy() || missing == 0);
             if (GUILayout.Button("Install Missing Required Packages"))
@@ -145,6 +182,61 @@ namespace CodeSketch.Installer.Editor
             EditorGUI.EndDisabledGroup();
 
             GUILayout.Space(10);
+        }
+
+        void StartInstallRequiredPackages()
+        {
+            if (IsBusy())
+                return;
+
+            RefreshMissingRequiredPackages();
+
+            if (_missingRequiredPackages.Count == 0)
+                return;
+
+            BeginBusy("Installing required packages...");
+
+            _requiredInstallQueue.Clear();
+            _ensuredRegistries.Clear();
+
+            foreach (var entry in _missingRequiredPackages)
+                _requiredInstallQueue.Enqueue(entry);
+
+            InstallNextRequiredPackage();
+        }
+
+        void InstallNextRequiredPackage()
+        {
+            if (_requiredInstallQueue.Count == 0)
+            {
+                ScheduleResolveIfNeeded();
+                return;
+            }
+
+            var pkg = _requiredInstallQueue.Dequeue();
+            EnsureRegistryIfNeeded(pkg);
+
+            if (pkg.IsDependency)
+            {
+                CodeSketch_ManifestUtility.EnsureDependency(pkg.PackageName, pkg.Version);
+                MarkResolveNeeded();
+                InstallNextRequiredPackage();
+                return;
+            }
+
+            _addRequest = Client.Add(pkg.GetInstallString());
+            EditorApplication.update += OnRequiredAddProgress;
+        }
+
+        void OnRequiredAddProgress()
+        {
+            if (_addRequest == null || !_addRequest.IsCompleted)
+                return;
+
+            EditorApplication.update -= OnRequiredAddProgress;
+            _addRequest = null;
+
+            InstallNextRequiredPackage();
         }
 
         // =====================================================
@@ -182,7 +274,6 @@ namespace CodeSketch.Installer.Editor
                 return;
 
             BeginBusy("Installing CodeSketch Framework...");
-
             _addRequest = Client.Add(CODESKETCH.GitUrl);
             EditorApplication.update += OnFrameworkAddProgress;
         }
@@ -200,7 +291,7 @@ namespace CodeSketch.Installer.Editor
         }
 
         // =====================================================
-        // FEATURES
+        // FEATURES (GIỮ NGUYÊN)
         // =====================================================
 
         void DrawFeaturesSection()
@@ -255,6 +346,7 @@ namespace CodeSketch.Installer.Editor
                 return;
 
             BeginBusy(next ? "Installing packages..." : "Removing packages...");
+
             if (next)
                 StartInstallPackages(toggle.Packages);
             else
@@ -312,20 +404,20 @@ namespace CodeSketch.Installer.Editor
         // PACKAGE FLOW
         // =====================================================
 
-        void StartInstallPackages(List<UPMInstallEntry> packages)
+        void StartInstallPackages(List<UPMInstallEntry> entries)
         {
             _featureInstallQueue.Clear();
-            foreach (var p in packages)
-                _featureInstallQueue.Enqueue(p);
+            foreach (var e in entries)
+                _featureInstallQueue.Enqueue(e);
 
             InstallNextFeaturePackage();
         }
 
-        void StartRemovePackages(List<UPMInstallEntry> packages)
+        void StartRemovePackages(List<UPMInstallEntry> entries)
         {
             _featureRemoveQueue.Clear();
-            foreach (var p in packages)
-                _featureRemoveQueue.Enqueue(p);
+            foreach (var e in entries)
+                _featureRemoveQueue.Enqueue(e);
 
             RemoveNextFeaturePackage();
         }
@@ -482,7 +574,7 @@ namespace CodeSketch.Installer.Editor
             if (pkg.InstallType != UPMPackageInstallType.ScopedRegistry)
                 return;
 
-            string key = $"{pkg.RegistryUrl}|{string.Join(",", pkg.RegistryScopes ?? new string[0])}";
+            string key = $"{pkg.RegistryUrl}|{string.Join(",", pkg.RegistryScopes ?? Array.Empty<string>())}";
             if (_ensuredRegistries.Contains(key))
                 return;
 
@@ -553,102 +645,6 @@ namespace CodeSketch.Installer.Editor
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
             return settings;
-        }
-
-        // =====================================================
-        // NUGET
-        // =====================================================
-
-        bool IsNuGetForUnityInstalled()
-        {
-            return Type.GetType(
-                "NugetForUnity.NugetForUnityEditor, NuGetForUnity"
-            ) != null;
-        }
-
-        void TryAutoInstallNuGetForUnity()
-        {
-            if (_nugetAutoInstallChecked)
-                return;
-
-            _nugetAutoInstallChecked = true;
-
-            if (EditorApplication.isCompiling)
-                return;
-
-            if (IsNuGetForUnityInstalled())
-                return;
-
-            BeginBusy("Installing NuGetForUnity...");
-            AssetDatabase.ImportPackage(NUGET_UNITYPACKAGE_PATH, false);
-
-            EditorApplication.delayCall += () =>
-            {
-                EndBusy();
-                AssetDatabase.Refresh();
-            };
-        }
-        
-        void StartInstallRequiredPackages()
-        {
-            if (IsBusy())
-                return;
-
-            BeginBusy("Installing required packages...");
-
-            _requiredInstallQueue.Clear();
-            _ensuredRegistries.Clear();
-
-            foreach (var pkg in _settings.RequiredPackages)
-            {
-                if (string.IsNullOrEmpty(pkg.PackageName))
-                    continue;
-
-                if (IsInstalled(pkg))
-                    continue;
-
-                _requiredInstallQueue.Enqueue(pkg);
-            }
-
-            InstallNextRequiredPackage();
-        }
-
-        void InstallNextRequiredPackage()
-        {
-            if (_requiredInstallQueue.Count == 0)
-            {
-                ScheduleResolveIfNeeded();
-                return;
-            }
-
-            var pkg = _requiredInstallQueue.Dequeue();
-            EnsureRegistryIfNeeded(pkg);
-
-            if (pkg.IsDependency)
-            {
-                CodeSketch_ManifestUtility.EnsureDependency(
-                    pkg.PackageName,
-                    pkg.Version
-                );
-
-                MarkResolveNeeded();
-                InstallNextRequiredPackage();
-                return;
-            }
-
-            _addRequest = Client.Add(pkg.GetInstallString());
-            EditorApplication.update += OnRequiredAddProgress;
-        }
-
-        void OnRequiredAddProgress()
-        {
-            if (_addRequest == null || !_addRequest.IsCompleted)
-                return;
-
-            EditorApplication.update -= OnRequiredAddProgress;
-            _addRequest = null;
-
-            InstallNextRequiredPackage();
         }
     }
 }
