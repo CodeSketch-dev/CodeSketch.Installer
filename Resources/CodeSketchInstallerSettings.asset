@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: a77074b5df5941b45b3be6ff232ba927, type: 3}
   m_Name: CodeSketchInstallerSettings
   m_EditorClassIdentifier: 
-  AlwaysShowOnStartup: 1
+  AlwaysShowOnStartup: 0
   RequiredPackages:
   - {fileID: 11400000, guid: 224133ee3991d3b429a8b385d0c01bb9, type: 2}
   - {fileID: 11400000, guid: 68ed8c301eaa7f041b8652a727e50130, type: 2}
