@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using UnityEditor;
+using System.Reflection;
 using UnityEditor.PackageManager;
 using UnityEditor.PackageManager.Requests;
 using UnityEngine;
@@ -66,6 +67,56 @@ namespace CodeSketch.Installer.Editor
             _instance = GetWindow<CodeSketchInstallerWindow>("CodeSketch Installer");
         }
 
+        static string TryGetMappingInstalledPath(string name)
+        {
+            try
+            {
+                var assemblies = AppDomain.CurrentDomain.GetAssemblies();
+                foreach (var asm in assemblies)
+                {
+                    var t = asm.GetType("CodeSketch.Installer.Editor.CodeSketchPackageMap");
+                    if (t != null)
+                    {
+                        var mi = t.GetMethod("GetMapping", BindingFlags.Public | BindingFlags.Static);
+                        if (mi != null)
+                        {
+                            var mapObj = mi.Invoke(null, new object[] { name });
+                            if (mapObj != null)
+                            {
+                                var f = mapObj.GetType().GetField("InstalledPath");
+                                if (f != null)
+                                    return f.GetValue(mapObj) as string;
+                            }
+                        }
+                    }
+                }
+            }
+            catch { }
+            return null;
+        }
+
+        static void TryRemoveMapping(string name)
+        {
+            try
+            {
+                var assemblies = AppDomain.CurrentDomain.GetAssemblies();
+                foreach (var asm in assemblies)
+                {
+                    var t = asm.GetType("CodeSketch.Installer.Editor.CodeSketchPackageMap");
+                    if (t != null)
+                    {
+                        var mi = t.GetMethod("RemoveMapping", BindingFlags.Public | BindingFlags.Static);
+                        if (mi != null)
+                        {
+                            mi.Invoke(null, new object[] { name });
+                        }
+                        return;
+                    }
+                }
+            }
+            catch { }
+        }
+
         [InitializeOnLoadMethod]
         static void OnScriptsReloaded()
         {
@@ -110,26 +161,6 @@ namespace CodeSketch.Installer.Editor
                     DrawRequiredPackagesSection();
                     DrawFrameworkSection();
                     break;
-                    // also attempt to remove any matching folders under Assets that belong to this package
-                    try
-                    {
-                        var assetsRoot = Path.Combine(Path.GetFullPath(Path.Combine(Application.dataPath, "..")), "Assets");
-                        var normPackage = System.Text.RegularExpressions.Regex.Replace(sel.Name.ToLowerInvariant(), "[^a-z0-9]", "");
-                        var assetDirs = Directory.GetDirectories(assetsRoot, "*", SearchOption.AllDirectories);
-                        foreach (var d2 in assetDirs)
-                        {
-                            var folder = Path.GetFileName(d2);
-                            if (string.IsNullOrEmpty(folder)) continue;
-                            var normFolder = System.Text.RegularExpressions.Regex.Replace(folder.ToLowerInvariant(), "[^a-z0-9]", "");
-                            if (!normFolder.Contains(normPackage)) continue;
-
-                            // compute relative path for AssetDatabase
-                            var rel = d2.Substring(assetsRoot.Length).TrimStart(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar).Replace("\\", "/");
-                            if (!rel.StartsWith("Assets/", StringComparison.OrdinalIgnoreCase)) rel = "Assets/" + rel;
-                            AssetDatabase.DeleteAsset(rel);
-                        }
-                    }
-                    catch { }
                 case 1:
                     DrawFeaturesSection();
                     break;
@@ -452,11 +483,11 @@ namespace CodeSketch.Installer.Editor
                     if (GUILayout.Button("Uninstall", GUILayout.Width(100)))
                     {
                         // Aggressive uninstall: use stored mapping if available, otherwise fall back to detected InstalledPath
-                        var mapping = CodeSketchPackageMap.GetMapping(sel.Name);
+                        var mappingInstalledPath = TryGetMappingInstalledPath(sel.Name);
                         var targets = new List<string>();
 
-                        if (mapping != null && !string.IsNullOrEmpty(mapping.InstalledPath))
-                            targets.Add(mapping.InstalledPath);
+                        if (!string.IsNullOrEmpty(mappingInstalledPath))
+                            targets.Add(mappingInstalledPath);
 
                         if (!string.IsNullOrEmpty(sel.InstalledPath) && !targets.Contains(sel.InstalledPath))
                             targets.Add(sel.InstalledPath);
@@ -547,7 +578,7 @@ namespace CodeSketch.Installer.Editor
                             }
 
                             // remove mapping if exists
-                            try { CodeSketchPackageMap.RemoveMapping(sel.Name); } catch { }
+                            TryRemoveMapping(sel.Name);
 
                             AssetDatabase.Refresh();
                             RefreshPackageState();

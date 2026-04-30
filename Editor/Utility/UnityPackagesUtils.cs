@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
 using UnityEditor;
+using System.Reflection;
 using UnityEngine;
 
 namespace CodeSketch.Installer.Editor
@@ -199,12 +200,30 @@ namespace CodeSketch.Installer.Editor
             if (!string.IsNullOrEmpty(packageName))
             {
                 var installed = GetInstalledPath(packageName);
-                try
-                {
-                    CodeSketchPackageMap.SaveMapping(packageName, installed ?? string.Empty, packagePath, GetInstalledVersion(packageName));
-                }
-                catch { }
+                TrySaveMapping(packageName, installed ?? string.Empty, packagePath, GetInstalledVersion(packageName));
             }
+        }
+
+        static void TrySaveMapping(string name, string installedPath, string sourcePath, string version)
+        {
+            try
+            {
+                var assemblies = AppDomain.CurrentDomain.GetAssemblies();
+                foreach (var asm in assemblies)
+                {
+                    var t = asm.GetType("CodeSketch.Installer.Editor.CodeSketchPackageMap");
+                    if (t != null)
+                    {
+                        var mi = t.GetMethod("SaveMapping", BindingFlags.Public | BindingFlags.Static);
+                        if (mi != null)
+                        {
+                            mi.Invoke(null, new object[] { name, installedPath, sourcePath, version });
+                        }
+                        return;
+                    }
+                }
+            }
+            catch { }
         }
 
         // Simple version compare: returns true if a > b. Null/empty means unknown.
