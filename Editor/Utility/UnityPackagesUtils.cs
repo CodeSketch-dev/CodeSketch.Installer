@@ -149,7 +149,10 @@ namespace CodeSketch.Installer.Editor
             {
                 var folder = Path.GetFileName(d);
                 if (folder == null) continue;
-                if (!folder.ToLowerInvariant().Contains(packageName.ToLowerInvariant())) continue;
+                // normalize names (remove non-alphanumeric) to match variants like "DOTweenPro" vs "DOTween Pro"
+                var normFolder = Regex.Replace(folder.ToLowerInvariant(), "[^a-z0-9]", "");
+                var normPackage = Regex.Replace(packageName.ToLowerInvariant(), "[^a-z0-9]", "");
+                if (!normFolder.Contains(normPackage)) continue;
 
                 var m = FolderVersionRegex.Match(folder);
                 if (m.Success)
