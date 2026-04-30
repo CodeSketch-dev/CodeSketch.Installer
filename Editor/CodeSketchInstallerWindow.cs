@@ -446,10 +446,47 @@ namespace CodeSketch.Installer.Editor
                                 {
                                     try
                                     {
-                                        if (Directory.Exists(installedPath))
-                                            Directory.Delete(installedPath, true);
-                                        else if (File.Exists(installedPath))
-                                            File.Delete(installedPath);
+                                        var root = Path.GetFullPath(Path.Combine(Application.dataPath, ".."));
+                                        // if inside Assets, prefer AssetDatabase.DeleteAsset to keep .meta in sync
+                                        if (installedPath.StartsWith(root, StringComparison.OrdinalIgnoreCase))
+                                        {
+                                            var rel = installedPath.Substring(root.Length).TrimStart(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar).Replace("\\", "/");
+                                            if (!rel.StartsWith("Assets/", StringComparison.OrdinalIgnoreCase))
+                                                rel = "Assets/" + rel;
+
+                                            // try AssetDatabase.DeleteAsset
+                                            bool deleted = AssetDatabase.DeleteAsset(rel);
+                                            if (!deleted)
+                                            {
+                                                // fallback to filesystem delete then remove .meta
+                                                if (Directory.Exists(installedPath))
+                                                    Directory.Delete(installedPath, true);
+                                                else if (File.Exists(installedPath))
+                                                    File.Delete(installedPath);
+
+                                                var metaPath = installedPath + ".meta";
+                                                if (File.Exists(metaPath))
+                                                    File.Delete(metaPath);
+                                            }
+                                        }
+                                        else
+                                        {
+                                            // outside Assets (e.g. Library/PackageCache) - delete folder/file
+                                            if (Directory.Exists(installedPath))
+                                                Directory.Delete(installedPath, true);
+                                            else if (File.Exists(installedPath))
+                                                File.Delete(installedPath);
+
+                                            // try remove any leftover meta in project pointing to same name
+                                            try
+                                            {
+                                                var parent = Path.GetDirectoryName(installedPath);
+                                                var name = Path.GetFileName(installedPath);
+                                                var possibleMeta = Path.Combine(parent ?? string.Empty, name + ".meta");
+                                                if (File.Exists(possibleMeta)) File.Delete(possibleMeta);
+                                            }
+                                            catch { }
+                                        }
                                     }
                                     catch (Exception ex)
                                     {
