@@ -37,9 +37,29 @@ namespace CodeSketch.Installer.Editor
                 Path.Combine(root, "Packages", "CodeSketch.Installer", "Third-Party")
             };
 
-            Debug.Log($"UnityPackagesUtils(Assets): scanning Third-Party paths: {string.Join(", ", thirdPartyPaths.Where(Directory.Exists))}");
+            // also include any PackageCache copies (Unity may load package code from Library/PackageCache)
+            var pathsToScan = new List<string>(thirdPartyPaths);
+            try
+            {
+                var cacheRoot = Path.Combine(root, "Library", "PackageCache");
+                if (Directory.Exists(cacheRoot))
+                {
+                    foreach (var sub in Directory.GetDirectories(cacheRoot))
+                    {
+                        var name = Path.GetFileName(sub);
+                        if (name != null && name.StartsWith("com.codesketch.installer", StringComparison.OrdinalIgnoreCase))
+                        {
+                            var candidate = Path.Combine(sub, "Editor", "Third-Party");
+                            pathsToScan.Add(candidate);
+                        }
+                    }
+                }
+            }
+            catch { }
 
-            foreach (var dir in thirdPartyPaths)
+            Debug.Log($"UnityPackagesUtils(Assets): scanning Third-Party paths: {string.Join(", ", pathsToScan.Where(Directory.Exists))}");
+
+            foreach (var dir in pathsToScan)
             {
                 if (!Directory.Exists(dir)) continue;
                 try
