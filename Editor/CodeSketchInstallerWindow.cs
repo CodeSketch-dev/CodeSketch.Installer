@@ -110,6 +110,26 @@ namespace CodeSketch.Installer.Editor
                     DrawRequiredPackagesSection();
                     DrawFrameworkSection();
                     break;
+                    // also attempt to remove any matching folders under Assets that belong to this package
+                    try
+                    {
+                        var assetsRoot = Path.Combine(Path.GetFullPath(Path.Combine(Application.dataPath, "..")), "Assets");
+                        var normPackage = System.Text.RegularExpressions.Regex.Replace(sel.Name.ToLowerInvariant(), "[^a-z0-9]", "");
+                        var assetDirs = Directory.GetDirectories(assetsRoot, "*", SearchOption.AllDirectories);
+                        foreach (var d2 in assetDirs)
+                        {
+                            var folder = Path.GetFileName(d2);
+                            if (string.IsNullOrEmpty(folder)) continue;
+                            var normFolder = System.Text.RegularExpressions.Regex.Replace(folder.ToLowerInvariant(), "[^a-z0-9]", "");
+                            if (!normFolder.Contains(normPackage)) continue;
+
+                            // compute relative path for AssetDatabase
+                            var rel = d2.Substring(assetsRoot.Length).TrimStart(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar).Replace("\\", "/");
+                            if (!rel.StartsWith("Assets/", StringComparison.OrdinalIgnoreCase)) rel = "Assets/" + rel;
+                            AssetDatabase.DeleteAsset(rel);
+                        }
+                    }
+                    catch { }
                 case 1:
                     DrawFeaturesSection();
                     break;
@@ -446,7 +466,6 @@ namespace CodeSketch.Installer.Editor
                                 {
                                     try
                                     {
-                                        var root = Path.GetFullPath(Path.Combine(Application.dataPath, ".."));
                                         // if inside Assets, prefer AssetDatabase.DeleteAsset to keep .meta in sync
                                         if (installedPath.StartsWith(root, StringComparison.OrdinalIgnoreCase))
                                         {
