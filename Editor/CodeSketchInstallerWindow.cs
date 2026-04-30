@@ -16,8 +16,10 @@ namespace CodeSketch.Installer.Editor
     {
         static CodeSketchInstallerWindow _instance;
         int _tabIndex = 0;
-        readonly string[] _tabLabels = { "Missing", "Features", "ThirdParty" };
+        readonly string[] _tabLabels = { "Packages", "Features", "ThirdParty" };
         int _thirdPartySelected = -1;
+        Vector2 _packagesScroll = Vector2.zero;
+        Dictionary<string, bool> _selection = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
 
         CodeSketchInstallerSettings _settings;
 
@@ -135,6 +137,49 @@ namespace CodeSketch.Installer.Editor
             ResetRequests();
             _settings = LoadOrCreateSettings();
             RefreshPackageState();
+
+            // ensure essential packages are installed (in-order top-down)
+            EditorApplication.delayCall += () =>
+            {
+                try
+                {
+                    if (IsBusy())
+                        return;
+
+                    var toInstall = new List<UPMInstallEntry>();
+
+                    var requiredList = Resources.Load<CodeSketch.Installer.Runtime.RequiredPackageList>("RequiredPackageList");
+                    var optionalList = Resources.Load<CodeSketch.Installer.Runtime.OptionalPackageList>("OptionalPackageList");
+
+                    // helper to append essentials in order from a ScriptableObject list
+                    void AppendEssentials(IEnumerable<ScriptableObject> list)
+                    {
+                        if (list == null) return;
+                        foreach (var obj in list)
+                        {
+                            if (obj == null) continue;
+                            var ia = obj as IUPMPackageAsset;
+                            if (ia == null) continue;
+                            if (!ia.IsEssential) continue;
+                            var e = ia.ToEntry();
+                            if (!IsInstalled(e)) toInstall.Add(e);
+                        }
+                    }
+
+                    // order: RequiredPackageList, OptionalPackageList, legacy settings.RequiredPackages
+                    if (requiredList != null) AppendEssentials(requiredList.Packages);
+                    if (optionalList != null) AppendEssentials(optionalList.Packages);
+
+                    if (_settings != null && _settings.RequiredPackages != null)
+                        AppendEssentials(_settings.RequiredPackages.Cast<ScriptableObject>());
+
+                    if (toInstall.Count > 0)
+                    {
+                        StartInstallPackages(toInstall);
+                    }
+                }
+                catch { }
+            };
         }
 
         void OnDisable()
@@ -214,40 +259,264 @@ namespace CodeSketch.Installer.Editor
 
         void DrawRequiredPackagesSection()
         {
-            GUILayout.Label("Required Packages", EditorStyles.boldLabel);
+            GUILayout.Label("Packages", EditorStyles.boldLabel);
 
-            if (_settings.RequiredPackages == null || _settings.RequiredPackages.Count == 0)
+            // load lists (new ScriptableObjects)
+            var requiredList = Resources.Load<CodeSketch.Installer.Runtime.RequiredPackageList>("RequiredPackageList");
+            var optionalList = Resources.Load<CodeSketch.Installer.Runtime.OptionalPackageList>("OptionalPackageList");
+
+            // fallback to old settings.RequiredPackages if present
+            var combined = new List<ScriptableObject>();
+            if (requiredList != null && requiredList.Packages != null) combined.AddRange(requiredList.Packages);
+            if (optionalList != null && optionalList.Packages != null) combined.AddRange(optionalList.Packages);
+            if ((_settings.RequiredPackages != null) && _settings.RequiredPackages.Count > 0)
+                combined.AddRange(_settings.RequiredPackages.Cast<ScriptableObject>());
+
+            if (combined.Count == 0)
             {
-                EditorGUILayout.HelpBox("No required packages defined.", MessageType.Info);
+                EditorGUILayout.HelpBox("No packages defined. Create RequiredPackageList/OptionalPackageList assets.", MessageType.Info);
+                GUILayout.Space(10);
                 return;
             }
 
-            RefreshMissingRequiredPackages();
-
-            int missing = _missingRequiredPackages.Count;
-            EditorGUILayout.LabelField($"Missing packages: {missing}");
-
-            if (missing > 0)
+            // scrollable list with checkboxes
+            _packagesScroll = EditorGUILayout.BeginScrollView(_packagesScroll, GUILayout.Height(220));
+            for (int i = 0; i < combined.Count; i++)
             {
-                EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+                var aObj = combined[i];
+                if (aObj == null) continue;
 
-                foreach (var pkg in _missingRequiredPackages)
+                string key = aObj.GetInstanceID().ToString();
+                IUPMPackageAsset ia = aObj as IUPMPackageAsset;
+                bool isEssential = false;
+                if (ia != null)
+                    isEssential = ia.IsEssential || (requiredList != null && requiredList.Packages.Contains(aObj)) || (_settings.RequiredPackages != null && _settings.RequiredPackages.Any(x => x == aObj));
+                bool current = false;
+                _selection.TryGetValue(key, out current);
+
+                EditorGUILayout.BeginHorizontal();
+                bool next;
+                // determine initial toggle state: if we've stored a value use it, otherwise default essentials=true, optional=false
+                bool hasValue = _selection.TryGetValue(key, out var stored);
+                bool initial = hasValue ? stored : isEssential;
+                next = GUILayout.Toggle(initial, "", GUILayout.Width(18));
+                if (isEssential)
+                    EditorGUILayout.LabelField("(Essential)", GUILayout.Width(80));
+                _selection[key] = next;
+
+                // persist change back to asset: if the package asset exposes IsEssential, update it when user toggles
+                try
                 {
-                    string label =
-                        string.IsNullOrEmpty(pkg.Name)
-                            ? pkg.PackageName
-                            : $"{pkg.Name} ({pkg.PackageName})";
+                    if (ia != null && ia.IsEssential != next)
+                    {
+                        ia.IsEssential = next;
+                        var so = aObj as ScriptableObject;
+                        if (so != null)
+                        {
+                            EditorUtility.SetDirty(so);
+                            AssetDatabase.SaveAssets();
+                        }
+                    }
+                }
+                catch { }
 
-                    EditorGUILayout.LabelField("• " + label, EditorStyles.miniLabel);
+                string label;
+                if (ia != null)
+                {
+                    var temp = ia.ToEntry();
+                    label = string.IsNullOrEmpty(temp.Name) ? temp.PackageName : temp.Name + " (" + temp.PackageName + ")";
+                }
+                else
+                {
+                    label = aObj.name;
+                }
+                EditorGUILayout.LabelField(label);
+
+                // installed status
+                bool installed = false;
+                if (ia != null)
+                {
+                    var entry = ia.ToEntry();
+                    installed = IsInstalled(entry);
+                }
+                GUILayout.FlexibleSpace();
+                EditorGUILayout.LabelField(installed ? "Installed" : "Not installed", GUILayout.Width(120));
+
+                EditorGUILayout.EndHorizontal();
+            }
+            EditorGUILayout.EndScrollView();
+
+            GUILayout.Space(6);
+
+            EditorGUILayout.BeginHorizontal();
+            EditorGUI.BeginDisabledGroup(IsBusy());
+            if (GUILayout.Button("Install Selected"))
+            {
+                var toInstall = new List<UPMInstallEntry>();
+                foreach (var aObj in combined)
+                {
+                    if (aObj == null) continue;
+                    string key = aObj.GetInstanceID().ToString();
+                    bool sel = false;
+                    _selection.TryGetValue(key, out sel);
+                    bool isEssential = (requiredList != null && requiredList.Packages.Contains(aObj)) || (_settings.RequiredPackages != null && _settings.RequiredPackages.Any(x => x == aObj));
+                    if (sel || isEssential)
+                    {
+                        var ia2 = aObj as IUPMPackageAsset;
+                        if (ia2 == null) continue;
+                        var e = ia2.ToEntry();
+                        if (!IsInstalled(e))
+                            toInstall.Add(e);
+                    }
                 }
 
-                EditorGUILayout.EndVertical();
+                if (toInstall.Count > 0)
+                {
+                    StartInstallPackages(toInstall);
+                }
             }
 
-            EditorGUI.BeginDisabledGroup(IsBusy() || missing == 0);
-            if (GUILayout.Button("Install Missing Required Packages"))
-                StartInstallRequiredPackages();
+            if (GUILayout.Button("Uninstall Selected"))
+            {
+                var toRemove = new List<UPMInstallEntry>();
+                var thirdPartyFound = new List<IUPMPackageAsset>();
+                foreach (var aObj in combined)
+                {
+                    if (aObj == null) continue;
+                    string key = aObj.GetInstanceID().ToString();
+                    bool sel = false;
+                    _selection.TryGetValue(key, out sel);
+                    if (!sel) continue;
+
+                    var ia2 = aObj as IUPMPackageAsset;
+                    if (ia2 == null) continue;
+                    var e = ia2.ToEntry();
+                    if (e.InstallType == UPMPackageInstallType.UnityPackage)
+                    {
+                        thirdPartyFound.Add(ia2);
+                    }
+                    else
+                        toRemove.Add(e);
+                }
+
+                if (toRemove.Count > 0)
+                    StartRemovePackages(toRemove);
+
+                if (thirdPartyFound.Count > 0)
+                {
+                    // perform aggressive uninstall for each third-party unitypackage asset
+                    var allTargets = new List<string>();
+                    foreach (var ia in thirdPartyFound)
+                    {
+                        try
+                        {
+                            var name = ia.ToEntry().Name;
+                            var mappingInstalled = TryGetMappingInstalledPath(name);
+                            if (!string.IsNullOrEmpty(mappingInstalled) && !allTargets.Contains(mappingInstalled))
+                                allTargets.Add(mappingInstalled);
+
+                            var detected = CodeSketch.Installer.Editor.UnityPackagesUtils.GetInstalledPath(name);
+                            if (!string.IsNullOrEmpty(detected) && !allTargets.Contains(detected))
+                                allTargets.Add(detected);
+
+                            // search Assets for matching folders
+                            try
+                            {
+                                var root = Path.GetFullPath(Path.Combine(Application.dataPath, ".."));
+                                var assetsRoot = Path.Combine(root, "Assets");
+                                var normPackage = System.Text.RegularExpressions.Regex.Replace(name.ToLowerInvariant(), "[^a-z0-9]", "");
+                                var assetDirs = Directory.GetDirectories(assetsRoot, "*", SearchOption.AllDirectories);
+                                foreach (var d2 in assetDirs)
+                                {
+                                    var folder = Path.GetFileName(d2);
+                                    if (string.IsNullOrEmpty(folder)) continue;
+                                    var normFolder = System.Text.RegularExpressions.Regex.Replace(folder.ToLowerInvariant(), "[^a-z0-9]", "");
+                                    if (!normFolder.Contains(normPackage)) continue;
+                                    if (!allTargets.Contains(d2)) allTargets.Add(d2);
+                                }
+                            }
+                            catch { }
+                        }
+                        catch { }
+                    }
+
+                    if (allTargets.Count == 0)
+                    {
+                        EditorUtility.DisplayDialog("Uninstall", "No installed paths detected for selected third-party items.", "OK");
+                    }
+                    else
+                    {
+                        // include parents
+                        var parentDirs = new List<string>();
+                        foreach (var tt in allTargets)
+                        {
+                            try
+                            {
+                                var p = System.IO.Path.GetDirectoryName(tt);
+                                if (!string.IsNullOrEmpty(p) && !parentDirs.Contains(p) && !allTargets.Contains(p))
+                                    parentDirs.Add(p);
+                            }
+                            catch { }
+                        }
+
+                        allTargets.AddRange(parentDirs);
+                        allTargets = allTargets.Distinct().OrderByDescending(s => s.Length).ToList();
+
+                        var message = "The following paths will be deleted (children first, then parents):\n" + string.Join("\n", allTargets);
+                        if (EditorUtility.DisplayDialog("Confirm Uninstall", message, "Delete", "Cancel"))
+                        {
+                            BeginBusy("Uninstalling...");
+                            foreach (var t in allTargets)
+                            {
+                                try
+                                {
+                                    if (string.IsNullOrEmpty(t)) continue;
+                                    var root = Path.GetFullPath(Path.Combine(Application.dataPath, ".."));
+                                    if (t.StartsWith(root, StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        var rel = t.Substring(root.Length).TrimStart(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar).Replace("\\", "/");
+                                        if (!rel.StartsWith("Assets/", StringComparison.OrdinalIgnoreCase)) rel = "Assets/" + rel;
+                                        AssetDatabase.DeleteAsset(rel);
+                                    }
+                                    else
+                                    {
+                                        if (Directory.Exists(t)) Directory.Delete(t, true);
+                                        else if (File.Exists(t)) File.Delete(t);
+
+                                        try
+                                        {
+                                            var di = new System.IO.DirectoryInfo(t);
+                                            while (di != null && !di.Name.StartsWith("com.")) di = di.Parent;
+                                            if (di != null && di.FullName.IndexOf("PackageCache", StringComparison.OrdinalIgnoreCase) >= 0)
+                                            {
+                                                if (di.Exists) Directory.Delete(di.FullName, true);
+                                            }
+                                        }
+                                        catch { }
+                                    }
+                                }
+                                catch (Exception ex)
+                                {
+                                    EditorUtility.DisplayDialog("Uninstall Failed", ex.Message, "OK");
+                                }
+                            }
+
+                            // remove mappings for selected
+                            foreach (var ia in thirdPartyFound)
+                            {
+                                try { TryRemoveMapping(ia.ToEntry().Name); } catch { }
+                            }
+
+                            AssetDatabase.Refresh();
+                            RefreshPackageState();
+                            Repaint();
+                            EndBusy();
+                        }
+                    }
+                }
+            }
             EditorGUI.EndDisabledGroup();
+            EditorGUILayout.EndHorizontal();
 
             GUILayout.Space(10);
         }

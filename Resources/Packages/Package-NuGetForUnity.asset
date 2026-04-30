@@ -21,3 +21,4 @@ MonoBehaviour:
   RegistryUrl: 
   RegistryScopes: []
   IsDependency: 0
+  IsEssential: 1

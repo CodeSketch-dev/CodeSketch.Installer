@@ -27,5 +27,10 @@ namespace CodeSketch.Installer.Runtime
         /// → Client.Add(name@version)
         /// </summary>
         ScopedRegistry
+        ,
+        /// <summary>
+        /// Unitypackage file distributed as a .unitypackage
+        /// </summary>
+        UnityPackage
     }
 }

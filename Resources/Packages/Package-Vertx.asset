@@ -22,3 +22,4 @@ MonoBehaviour:
   RegistryScopes:
   - com.vertx
   IsDependency: 0
+  IsEssential: 1

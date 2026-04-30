@@ -6,7 +6,7 @@ namespace CodeSketch.Installer.Runtime
         menuName = "CodeSketch/UPM/UPM Install Entry",
         fileName = "UPMInstallEntry"
     )]
-    public class UPMInstallEntryAsset : ScriptableObject
+    public class UPMInstallEntryAsset : ScriptableObject, IUPMPackageAsset
     {
         [Header("Info")]
         public string Name;
@@ -26,6 +26,9 @@ namespace CodeSketch.Installer.Runtime
 
         [Header("Flags")]
         public bool IsDependency = true;
+        [Header("Management")]
+        [Tooltip("Mark this package as essential (auto-checked on window open). Default: false")]
+        public bool IsEssential = false;
 
         // ================= CONVERT =================
 
@@ -44,5 +47,7 @@ namespace CodeSketch.Installer.Runtime
                 IsDependency = IsDependency
             };
         }
+
+        bool IUPMPackageAsset.IsEssential { get => IsEssential; set => IsEssential = value; }
     }
 }
