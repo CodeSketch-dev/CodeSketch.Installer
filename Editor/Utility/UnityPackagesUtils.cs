@@ -57,7 +57,7 @@ namespace CodeSketch.Installer.Editor
             }
             catch { }
 
-            Debug.Log($"UnityPackagesUtils(Assets): scanning Third-Party paths: {string.Join(", ", pathsToScan.Where(Directory.Exists))}");
+
 
             foreach (var dir in pathsToScan)
             {
@@ -96,7 +96,7 @@ namespace CodeSketch.Installer.Editor
 
             var list = new List<UnityPackageEntry>();
 
-            Debug.Log($"UnityPackagesUtils(Assets): candidates found: {candidates.Count}");
+
             foreach (var f in candidates.OrderByDescending(f =>
                 File.Exists(f) ? File.GetLastWriteTimeUtc(f) : (Directory.Exists(f) ? Directory.GetLastWriteTimeUtc(f) : DateTime.MinValue)))
             {
@@ -174,13 +174,11 @@ namespace CodeSketch.Installer.Editor
         {
             if (!File.Exists(packagePath))
             {
-                Debug.LogError($"UnityPackageImporter: package not found: {packagePath}");
                 return;
             }
 
             AssetDatabase.ImportPackage(packagePath, false);
             AssetDatabase.Refresh();
-            Debug.Log($"UnityPackageImporter: Imported {packagePath}");
         }
 
         // Simple version compare: returns true if a > b. Null/empty means unknown.
