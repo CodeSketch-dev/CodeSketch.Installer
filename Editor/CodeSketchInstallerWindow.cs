@@ -13,6 +13,9 @@ namespace CodeSketch.Installer.Editor
     public class CodeSketchInstallerWindow : EditorWindow
     {
         static CodeSketchInstallerWindow _instance;
+        int _tabIndex = 0;
+        readonly string[] _tabLabels = { "Missing", "Features", "ThirdParty" };
+        int _thirdPartySelected = -1;
 
         CodeSketchInstallerSettings _settings;
 
@@ -22,7 +25,7 @@ namespace CodeSketch.Installer.Editor
 
         AddRequest _addRequest;
         RemoveRequest _removeRequest;
-        ListRequest _listRequest ;
+        ListRequest _listRequest;
 
         readonly HashSet<string> _installedPackages = new();
 
@@ -97,9 +100,22 @@ namespace CodeSketch.Installer.Editor
                 return;
 
             DrawHeader();
-            DrawRequiredPackagesSection();
-            DrawFrameworkSection();
-            DrawFeaturesSection();
+
+            _tabIndex = GUILayout.Toolbar(_tabIndex, _tabLabels);
+
+            switch (_tabIndex)
+            {
+                case 0:
+                    DrawRequiredPackagesSection();
+                    DrawFrameworkSection();
+                    break;
+                case 1:
+                    DrawFeaturesSection();
+                    break;
+                case 2:
+                    DrawThirdPartySection();
+                    break;
+            }
 
             EditorUtility.SetDirty(_settings);
             DrawBusyOverlay();
@@ -306,6 +322,93 @@ namespace CodeSketch.Installer.Editor
 
             foreach (var feature in _settings.Features)
                 DrawFeature(feature);
+        }
+
+        // =====================================================
+        // THIRD PARTY
+        // =====================================================
+
+        void DrawThirdPartySection()
+        {
+            GUILayout.Label("Third-Party Packages", EditorStyles.boldLabel);
+
+            var found = CodeSketch.Installer.Editor.UnityPackagesUtils.FindUnityPackagesInRepo();
+
+            if (found == null || found.Count == 0)
+            {
+                EditorGUILayout.HelpBox("No unitypackage files found in installer or repo.", MessageType.Info);
+                return;
+            }
+
+
+
+
+
+            GUILayout.BeginVertical(EditorStyles.helpBox);
+
+            // selectable list with single selection and a detail area below
+            for (int i = 0; i < found.Count; i++)
+            {
+                var p = found[i];
+                GUILayout.BeginHorizontal();
+                bool selected = (_thirdPartySelected == i);
+                if (GUILayout.Toggle(selected, $"{p.Name} {p.Version}", "Button", GUILayout.ExpandWidth(false), GUILayout.Width(300)))
+                {
+                    _thirdPartySelected = i;
+                }
+                else
+                {
+                    if (selected)
+                        _thirdPartySelected = -1;
+                }
+
+                GUILayout.FlexibleSpace();
+                if (!string.IsNullOrEmpty(p.InstalledVersion))
+                    GUILayout.Label($"Installed: {p.InstalledVersion}", GUILayout.Width(140));
+                else
+                    GUILayout.Label("Installed: -", GUILayout.Width(140));
+
+                GUILayout.EndHorizontal();
+            }
+
+            GUILayout.EndVertical();
+
+            GUILayout.Space(6);
+
+            // details for selected
+            if (_thirdPartySelected >= 0 && _thirdPartySelected < found.Count)
+            {
+                var sel = found[_thirdPartySelected];
+                EditorGUILayout.LabelField("Selected:", sel.Name + " " + sel.Version);
+                EditorGUILayout.LabelField("Path:", sel.FilePath);
+
+                EditorGUILayout.BeginHorizontal();
+                EditorGUI.BeginDisabledGroup(IsBusy());
+                if (GUILayout.Button("Install", GUILayout.Width(100)))
+                {
+                    BeginBusy($"Importing {sel.Name}...");
+                    CodeSketch.Installer.Editor.UnityPackagesUtils.ImportUnityPackage(sel.FilePath);
+                    EditorApplication.delayCall += () =>
+                    {
+                        AssetDatabase.Refresh();
+                        EndBusy();
+                        RefreshPackageState();
+                    };
+                }
+
+                if (GUILayout.Button("Reveal in Explorer", GUILayout.Width(140)))
+                {
+                    try
+                    {
+                        EditorUtility.RevealInFinder(sel.FilePath);
+                    }
+                    catch { }
+                }
+                EditorGUI.EndDisabledGroup();
+                EditorGUILayout.EndHorizontal();
+            }
+
+            GUILayout.Space(8);
         }
 
         void DrawFeature(InstallerFeatureDefinitionAsset feature)
