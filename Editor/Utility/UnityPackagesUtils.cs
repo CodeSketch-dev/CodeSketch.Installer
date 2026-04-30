@@ -37,6 +37,8 @@ namespace CodeSketch.Installer.Editor
                 Path.Combine(root, "Packages", "CodeSketch.Installer", "Third-Party")
             };
 
+            Debug.Log($"UnityPackagesUtils(Assets): scanning Third-Party paths: {string.Join(", ", thirdPartyPaths.Where(Directory.Exists))}");
+
             foreach (var dir in thirdPartyPaths)
             {
                 if (!Directory.Exists(dir)) continue;
@@ -74,6 +76,7 @@ namespace CodeSketch.Installer.Editor
 
             var list = new List<UnityPackageEntry>();
 
+            Debug.Log($"UnityPackagesUtils(Assets): candidates found: {candidates.Count}");
             foreach (var f in candidates.OrderByDescending(f =>
                 File.Exists(f) ? File.GetLastWriteTimeUtc(f) : (Directory.Exists(f) ? Directory.GetLastWriteTimeUtc(f) : DateTime.MinValue)))
             {
