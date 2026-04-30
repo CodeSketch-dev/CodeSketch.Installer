@@ -486,7 +486,26 @@ namespace CodeSketch.Installer.Editor
                         }
                         else
                         {
-                            var message = "The following paths will be deleted:\n" + string.Join("\n", targets);
+                            // include immediate parent folders (e.g. Demigiant) in deletion list
+                            var parentDirs = new List<string>();
+                            foreach (var tt in targets)
+                            {
+                                try
+                                {
+                                    var p = System.IO.Path.GetDirectoryName(tt);
+                                    if (!string.IsNullOrEmpty(p) && !parentDirs.Contains(p) && !targets.Contains(p))
+                                        parentDirs.Add(p);
+                                }
+                                catch { }
+                            }
+
+                            // merge parents into targets so they get deleted after children
+                            targets.AddRange(parentDirs);
+
+                            // ensure unique and delete children before parents
+                            targets = targets.Distinct().OrderByDescending(s => s.Length).ToList();
+
+                            var message = "The following paths will be deleted (children first, then parents):\n" + string.Join("\n", targets);
                             if (!EditorUtility.DisplayDialog("Confirm Uninstall", message, "Delete", "Cancel"))
                                 return;
 
