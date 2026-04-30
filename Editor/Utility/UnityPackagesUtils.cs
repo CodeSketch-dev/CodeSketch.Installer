@@ -44,6 +44,20 @@ namespace CodeSketch.Installer.Editor
                 {
                     // top-level only to avoid duplicates inside nested demo folders
                     candidates.AddRange(Directory.GetFiles(dir, "*.unitypackage", SearchOption.TopDirectoryOnly));
+
+                    // Also accept folders named like "Name v1.2.3" (some packages are unpacked folders)
+                    var subdirs = Directory.GetDirectories(dir, "*", SearchOption.TopDirectoryOnly);
+                    foreach (var sd in subdirs)
+                    {
+                        var folderName = Path.GetFileName(sd);
+                        if (string.IsNullOrEmpty(folderName)) continue;
+
+                        // match file-like or folder-like version pattern
+                        if (FileNameVersionRegex.IsMatch(folderName) || FolderVersionRegex.IsMatch(folderName))
+                        {
+                            candidates.Add(sd);
+                        }
+                    }
                 }
                 catch { }
             }
@@ -60,7 +74,8 @@ namespace CodeSketch.Installer.Editor
 
             var list = new List<UnityPackageEntry>();
 
-            foreach (var f in candidates.OrderByDescending(f => File.GetLastWriteTimeUtc(f)))
+            foreach (var f in candidates.OrderByDescending(f =>
+                File.Exists(f) ? File.GetLastWriteTimeUtc(f) : (Directory.Exists(f) ? Directory.GetLastWriteTimeUtc(f) : DateTime.MinValue)))
             {
                 var fileName = Path.GetFileNameWithoutExtension(f);
                 string name = fileName;
