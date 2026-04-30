@@ -421,7 +421,7 @@ namespace CodeSketch.Installer.Editor
                     if (GUILayout.Button("Install", GUILayout.Width(100)))
                     {
                         BeginBusy($"Importing {sel.Name}...");
-                        CodeSketch.Installer.Editor.UnityPackagesUtils.ImportUnityPackage(sel.FilePath);
+                        CodeSketch.Installer.Editor.UnityPackagesUtils.ImportUnityPackage(sel.FilePath, sel.Name);
                         EditorApplication.delayCall += () =>
                         {
                             AssetDatabase.Refresh();
@@ -438,7 +438,7 @@ namespace CodeSketch.Installer.Editor
                         if (GUILayout.Button("Update", GUILayout.Width(100)))
                         {
                             BeginBusy($"Updating {sel.Name}...");
-                            CodeSketch.Installer.Editor.UnityPackagesUtils.ImportUnityPackage(sel.FilePath);
+                            CodeSketch.Installer.Editor.UnityPackagesUtils.ImportUnityPackage(sel.FilePath, sel.Name);
                             EditorApplication.delayCall += () =>
                             {
                                 AssetDatabase.Refresh();
@@ -451,77 +451,88 @@ namespace CodeSketch.Installer.Editor
 
                     if (GUILayout.Button("Uninstall", GUILayout.Width(100)))
                     {
-                        // try automatic uninstall if we have an installed path inside project
-                        var installedPath = sel.InstalledPath;
-                        if (!string.IsNullOrEmpty(installedPath))
+                        // Aggressive uninstall: use stored mapping if available, otherwise fall back to detected InstalledPath
+                        var mapping = CodeSketchPackageMap.GetMapping(sel.Name);
+                        var targets = new List<string>();
+
+                        if (mapping != null && !string.IsNullOrEmpty(mapping.InstalledPath))
+                            targets.Add(mapping.InstalledPath);
+
+                        if (!string.IsNullOrEmpty(sel.InstalledPath) && !targets.Contains(sel.InstalledPath))
+                            targets.Add(sel.InstalledPath);
+
+                        // also search Assets for any folders matching normalized package name
+                        try
                         {
                             var root = Path.GetFullPath(Path.Combine(Application.dataPath, ".."));
-                            if (!installedPath.StartsWith(root, StringComparison.OrdinalIgnoreCase))
+                            var assetsRoot = Path.Combine(root, "Assets");
+                            var normPackage = System.Text.RegularExpressions.Regex.Replace(sel.Name.ToLowerInvariant(), "[^a-z0-9]", "");
+                            var assetDirs = Directory.GetDirectories(assetsRoot, "*", SearchOption.AllDirectories);
+                            foreach (var d2 in assetDirs)
                             {
-                                EditorUtility.DisplayDialog("Uninstall", $"Detected installed path is outside project: {installedPath}. Please remove manually.", "OK");
+                                var folder = Path.GetFileName(d2);
+                                if (string.IsNullOrEmpty(folder)) continue;
+                                var normFolder = System.Text.RegularExpressions.Regex.Replace(folder.ToLowerInvariant(), "[^a-z0-9]", "");
+                                if (!normFolder.Contains(normPackage)) continue;
+                                if (!targets.Contains(d2)) targets.Add(d2);
                             }
-                            else
-                            {
-                                if (EditorUtility.DisplayDialog("Confirm Uninstall", $"Delete installed files at:\n{installedPath}\nThis will permanently remove those files.", "Delete", "Cancel"))
-                                {
-                                    try
-                                    {
-                                        // if inside Assets, prefer AssetDatabase.DeleteAsset to keep .meta in sync
-                                        if (installedPath.StartsWith(root, StringComparison.OrdinalIgnoreCase))
-                                        {
-                                            var rel = installedPath.Substring(root.Length).TrimStart(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar).Replace("\\", "/");
-                                            if (!rel.StartsWith("Assets/", StringComparison.OrdinalIgnoreCase))
-                                                rel = "Assets/" + rel;
+                        }
+                        catch { }
 
-                                            // try AssetDatabase.DeleteAsset
-                                            bool deleted = AssetDatabase.DeleteAsset(rel);
-                                            if (!deleted)
-                                            {
-                                                // fallback to filesystem delete then remove .meta
-                                                if (Directory.Exists(installedPath))
-                                                    Directory.Delete(installedPath, true);
-                                                else if (File.Exists(installedPath))
-                                                    File.Delete(installedPath);
-
-                                                var metaPath = installedPath + ".meta";
-                                                if (File.Exists(metaPath))
-                                                    File.Delete(metaPath);
-                                            }
-                                        }
-                                        else
-                                        {
-                                            // outside Assets (e.g. Library/PackageCache) - delete folder/file
-                                            if (Directory.Exists(installedPath))
-                                                Directory.Delete(installedPath, true);
-                                            else if (File.Exists(installedPath))
-                                                File.Delete(installedPath);
-
-                                            // try remove any leftover meta in project pointing to same name
-                                            try
-                                            {
-                                                var parent = Path.GetDirectoryName(installedPath);
-                                                var name = Path.GetFileName(installedPath);
-                                                var possibleMeta = Path.Combine(parent ?? string.Empty, name + ".meta");
-                                                if (File.Exists(possibleMeta)) File.Delete(possibleMeta);
-                                            }
-                                            catch { }
-                                        }
-                                    }
-                                    catch (Exception ex)
-                                    {
-                                        EditorUtility.DisplayDialog("Uninstall Failed", ex.Message, "OK");
-                                    }
-
-                                    AssetDatabase.Refresh();
-                                    RefreshPackageState();
-                                    Repaint();
-                                }
-                            }
+                        if (targets.Count == 0)
+                        {
+                            var installedInfo = string.IsNullOrEmpty(sel.InstalledVersion) ? "not detected" : sel.InstalledVersion;
+                            EditorUtility.DisplayDialog("Uninstall", $"No installed paths detected for {sel.Name}. Detected: {installedInfo}", "OK");
                         }
                         else
                         {
-                            var installedInfo = string.IsNullOrEmpty(sel.InstalledVersion) ? "not detected" : sel.InstalledVersion;
-                            EditorUtility.DisplayDialog("Uninstall", $"Please remove the installed package files for {sel.Name} manually. Detected: {installedInfo}", "OK");
+                            var message = "The following paths will be deleted:\n" + string.Join("\n", targets);
+                            if (!EditorUtility.DisplayDialog("Confirm Uninstall", message, "Delete", "Cancel"))
+                                return;
+
+                            foreach (var t in targets)
+                            {
+                                try
+                                {
+                                    if (string.IsNullOrEmpty(t)) continue;
+                                    var root = Path.GetFullPath(Path.Combine(Application.dataPath, ".."));
+                                    if (t.StartsWith(root, StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        var rel = t.Substring(root.Length).TrimStart(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar).Replace("\\", "/");
+                                        if (!rel.StartsWith("Assets/", StringComparison.OrdinalIgnoreCase)) rel = "Assets/" + rel;
+                                        AssetDatabase.DeleteAsset(rel);
+                                    }
+                                    else
+                                    {
+                                        // delete filesystem path
+                                        if (Directory.Exists(t)) Directory.Delete(t, true);
+                                        else if (File.Exists(t)) File.Delete(t);
+
+                                        // if this was inside PackageCache, try to remove the top-level package folder (com.*)
+                                        try
+                                        {
+                                            var di = new System.IO.DirectoryInfo(t);
+                                            while (di != null && !di.Name.StartsWith("com.")) di = di.Parent;
+                                            if (di != null && di.FullName.IndexOf("PackageCache", StringComparison.OrdinalIgnoreCase) >= 0)
+                                            {
+                                                if (di.Exists) Directory.Delete(di.FullName, true);
+                                            }
+                                        }
+                                        catch { }
+                                    }
+                                }
+                                catch (Exception ex)
+                                {
+                                    EditorUtility.DisplayDialog("Uninstall Failed", ex.Message, "OK");
+                                }
+                            }
+
+                            // remove mapping if exists
+                            try { CodeSketchPackageMap.RemoveMapping(sel.Name); } catch { }
+
+                            AssetDatabase.Refresh();
+                            RefreshPackageState();
+                            Repaint();
                         }
                     }
                 }

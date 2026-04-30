@@ -187,7 +187,7 @@ namespace CodeSketch.Installer.Editor
         }
 
         // Import the unitypackage file via AssetDatabase
-        public static void ImportUnityPackage(string packagePath)
+        public static void ImportUnityPackage(string packagePath, string packageName = null)
         {
             if (!File.Exists(packagePath))
             {
@@ -196,6 +196,15 @@ namespace CodeSketch.Installer.Editor
 
             AssetDatabase.ImportPackage(packagePath, false);
             AssetDatabase.Refresh();
+            if (!string.IsNullOrEmpty(packageName))
+            {
+                var installed = GetInstalledPath(packageName);
+                try
+                {
+                    CodeSketchPackageMap.SaveMapping(packageName, installed ?? string.Empty, packagePath, GetInstalledVersion(packageName));
+                }
+                catch { }
+            }
         }
 
         // Simple version compare: returns true if a > b. Null/empty means unknown.
