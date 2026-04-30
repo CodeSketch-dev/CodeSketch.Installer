@@ -384,16 +384,52 @@ namespace CodeSketch.Installer.Editor
 
                 EditorGUILayout.BeginHorizontal();
                 EditorGUI.BeginDisabledGroup(IsBusy());
-                if (GUILayout.Button("Install", GUILayout.Width(100)))
+
+                bool hasInstalled = !string.IsNullOrEmpty(sel.InstalledVersion);
+                bool canCompare = !string.IsNullOrEmpty(sel.Version) && sel.InstalledVersion != null && sel.InstalledVersion != "installed";
+                bool canUpdate = canCompare && CodeSketch.Installer.Editor.UnityPackagesUtils.CompareVersionGreater(sel.Version, sel.InstalledVersion);
+
+                if (!hasInstalled)
                 {
-                    BeginBusy($"Importing {sel.Name}...");
-                    CodeSketch.Installer.Editor.UnityPackagesUtils.ImportUnityPackage(sel.FilePath);
-                    EditorApplication.delayCall += () =>
+                    if (GUILayout.Button("Install", GUILayout.Width(100)))
                     {
-                        AssetDatabase.Refresh();
-                        EndBusy();
-                        RefreshPackageState();
-                    };
+                        BeginBusy($"Importing {sel.Name}...");
+                        CodeSketch.Installer.Editor.UnityPackagesUtils.ImportUnityPackage(sel.FilePath);
+                        EditorApplication.delayCall += () =>
+                        {
+                            AssetDatabase.Refresh();
+                            EndBusy();
+                            RefreshPackageState();
+                            Repaint();
+                        };
+                    }
+                }
+                else
+                {
+                    if (canUpdate)
+                    {
+                        if (GUILayout.Button("Update", GUILayout.Width(100)))
+                        {
+                            BeginBusy($"Updating {sel.Name}...");
+                            CodeSketch.Installer.Editor.UnityPackagesUtils.ImportUnityPackage(sel.FilePath);
+                            EditorApplication.delayCall += () =>
+                            {
+                                AssetDatabase.Refresh();
+                                EndBusy();
+                                RefreshPackageState();
+                                Repaint();
+                            };
+                        }
+                    }
+                    else
+                    {
+                        if (GUILayout.Button("Uninstall", GUILayout.Width(100)))
+                        {
+                            // simple uninstall: reveal installed folder for manual removal
+                            var installedPath = sel.InstalledVersion == "installed" ? "(installed - unknown path)" : sel.InstalledVersion;
+                            EditorUtility.DisplayDialog("Uninstall", $"Please remove the installed package files for {sel.Name} manually. Detected version: {installedPath}", "OK");
+                        }
+                    }
                 }
 
                 if (GUILayout.Button("Reveal in Explorer", GUILayout.Width(140)))
@@ -404,6 +440,7 @@ namespace CodeSketch.Installer.Editor
                     }
                     catch { }
                 }
+
                 EditorGUI.EndDisabledGroup();
                 EditorGUILayout.EndHorizontal();
             }

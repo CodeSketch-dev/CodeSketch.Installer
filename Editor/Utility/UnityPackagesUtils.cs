@@ -207,5 +207,11 @@ namespace CodeSketch.Installer.Editor
             // numeric parts equal, consider a not greater
             return false;
         }
+
+        // public wrapper so UI can compare versions
+        public static bool CompareVersionGreater(string a, string b)
+        {
+            return IsVersionGreater(a, b);
+        }
     }
 }
