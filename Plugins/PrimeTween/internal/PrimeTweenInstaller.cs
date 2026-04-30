@@ -253,11 +253,11 @@ namespace PrimeTween
             RevertTgzMeta();
         }
 
-                static void RevertTgzMeta()
-                {
-                        var path = TgzPath + ".meta";
-                        Assert.IsTrue(File.Exists(path), path);
-                        File.WriteAllText(path, @"fileFormatVersion: 2
+        static void RevertTgzMeta()
+        {
+            var path = TgzPath + ".meta";
+            Assert.IsTrue(File.Exists(path), path);
+            File.WriteAllText(path, @"fileFormatVersion: 2
 guid: cdd0c4b9889044d73bc958a922ada300
 DefaultImporter:
     externalObjects: {}
@@ -265,7 +265,7 @@ DefaultImporter:
     assetBundleName: 
     assetBundleVariant: 
 ");
-                }
+        }
 
         [InitializeOnLoadMethod]
         static void InitOnLoad()
