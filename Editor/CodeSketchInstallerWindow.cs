@@ -1,6 +1,7 @@
 #if UNITY_EDITOR
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using UnityEditor;
 using UnityEditor.PackageManager;
@@ -385,9 +386,15 @@ namespace CodeSketch.Installer.Editor
                 EditorGUILayout.BeginHorizontal();
                 EditorGUI.BeginDisabledGroup(IsBusy());
 
-                bool hasInstalled = !string.IsNullOrEmpty(sel.InstalledVersion);
-                bool canCompare = !string.IsNullOrEmpty(sel.Version) && sel.InstalledVersion != null && sel.InstalledVersion != "installed";
-                bool canUpdate = canCompare && CodeSketch.Installer.Editor.UnityPackagesUtils.CompareVersionGreater(sel.Version, sel.InstalledVersion);
+                bool hasInstalled = !string.IsNullOrEmpty(sel.InstalledVersion) || !string.IsNullOrEmpty(sel.InstalledPath);
+                bool canUpdate = false;
+                if (!string.IsNullOrEmpty(sel.Version))
+                {
+                    if (!string.IsNullOrEmpty(sel.InstalledVersion) && sel.InstalledVersion != "installed")
+                        canUpdate = CodeSketch.Installer.Editor.UnityPackagesUtils.CompareVersionGreater(sel.Version, sel.InstalledVersion);
+                    else if (sel.InstalledVersion == "installed")
+                        canUpdate = true; // unknown installed version but package exists -> allow update
+                }
 
                 if (!hasInstalled)
                 {
@@ -421,13 +428,44 @@ namespace CodeSketch.Installer.Editor
                             };
                         }
                     }
-                    else
+
+                    if (GUILayout.Button("Uninstall", GUILayout.Width(100)))
                     {
-                        if (GUILayout.Button("Uninstall", GUILayout.Width(100)))
+                        // try automatic uninstall if we have an installed path inside project
+                        var installedPath = sel.InstalledPath;
+                        if (!string.IsNullOrEmpty(installedPath))
                         {
-                            // simple uninstall: reveal installed folder for manual removal
-                            var installedPath = sel.InstalledVersion == "installed" ? "(installed - unknown path)" : sel.InstalledVersion;
-                            EditorUtility.DisplayDialog("Uninstall", $"Please remove the installed package files for {sel.Name} manually. Detected version: {installedPath}", "OK");
+                            var root = Path.GetFullPath(Path.Combine(Application.dataPath, ".."));
+                            if (!installedPath.StartsWith(root, StringComparison.OrdinalIgnoreCase))
+                            {
+                                EditorUtility.DisplayDialog("Uninstall", $"Detected installed path is outside project: {installedPath}. Please remove manually.", "OK");
+                            }
+                            else
+                            {
+                                if (EditorUtility.DisplayDialog("Confirm Uninstall", $"Delete installed files at:\n{installedPath}\nThis will permanently remove those files.", "Delete", "Cancel"))
+                                {
+                                    try
+                                    {
+                                        if (Directory.Exists(installedPath))
+                                            Directory.Delete(installedPath, true);
+                                        else if (File.Exists(installedPath))
+                                            File.Delete(installedPath);
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        EditorUtility.DisplayDialog("Uninstall Failed", ex.Message, "OK");
+                                    }
+
+                                    AssetDatabase.Refresh();
+                                    RefreshPackageState();
+                                    Repaint();
+                                }
+                            }
+                        }
+                        else
+                        {
+                            var installedInfo = string.IsNullOrEmpty(sel.InstalledVersion) ? "not detected" : sel.InstalledVersion;
+                            EditorUtility.DisplayDialog("Uninstall", $"Please remove the installed package files for {sel.Name} manually. Detected: {installedInfo}", "OK");
                         }
                     }
                 }

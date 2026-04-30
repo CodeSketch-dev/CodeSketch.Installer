@@ -16,6 +16,7 @@ namespace CodeSketch.Installer.Editor
             public string Version;
             public string FilePath;
             public string InstalledVersion; // null if not installed
+            public string InstalledPath; // path to installed folder if detected
         }
 
         static readonly Regex FileNameVersionRegex = new Regex(@"^(?<name>.+?)[-_ ]?v?(?<ver>\d+(?:\.\d+)*([-_][A-Za-z0-9]+)?)$",
@@ -116,7 +117,8 @@ namespace CodeSketch.Installer.Editor
                     Name = name,
                     Version = ver,
                     FilePath = f,
-                    InstalledVersion = GetInstalledVersion(name)
+                    InstalledVersion = GetInstalledVersion(name),
+                    InstalledPath = GetInstalledPath(name)
                 };
 
                 list.Add(entry);
@@ -144,6 +146,7 @@ namespace CodeSketch.Installer.Editor
             catch { }
 
             string bestVer = null;
+            string foundPath = null;
 
             foreach (var d in candidates)
             {
@@ -167,9 +170,20 @@ namespace CodeSketch.Installer.Editor
                     if (bestVer == null)
                         bestVer = "installed";
                 }
+                if (foundPath == null)
+                    foundPath = d;
             }
 
+            _lastFoundPath = foundPath;
             return bestVer;
+        }
+
+        static string _lastFoundPath = null;
+
+        public static string GetInstalledPath(string packageName)
+        {
+            GetInstalledVersion(packageName);
+            return _lastFoundPath;
         }
 
         // Import the unitypackage file via AssetDatabase
