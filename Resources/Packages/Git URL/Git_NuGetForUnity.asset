@@ -16,5 +16,5 @@ MonoBehaviour:
   GitUrl: https://github.com/GlitchEnzo/NuGetForUnity.git?path=/src/NuGetForUnity
   PackageName: com.github-glitchenzo.nugetforunity
   Version: 
-  IsDependency: 0
+  IsDependency: 1
   IsEssential: 0

@@ -12,11 +12,12 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 2c21b5bc0fc97b94394009bd94c64866, type: 3}
   m_Name: Scope-Vertx
   m_EditorClassIdentifier: 
-  Name: 
-  PackageName: 
+  Name: Vertx Debugging
+  PackageName: com.vertx.debugging
   Version: 
-  RegistryName: 
-  RegistryUrl: 
-  RegistryScopes: []
-  IsDependency: 0
+  RegistryName: Vertx
+  RegistryUrl: https://package.openupm.com
+  RegistryScopes:
+  - com.vertx
+  IsDependency: 1
   IsEssential: 0
