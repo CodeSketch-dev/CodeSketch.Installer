@@ -28,7 +28,19 @@ namespace CodeSketch.Installer.Editor
                     "CodeSketchInstallerSettings"
                 );
 
-            if (settings == null || settings.RequiredPackages == null || settings.RequiredPackages.Count == 0)
+            if (settings == null)
+                return;
+
+            // migrate if needed
+            if ((settings.EssentialPackages == null || settings.EssentialPackages.Count == 0) && settings.RequiredPackages != null && settings.RequiredPackages.Count > 0)
+            {
+                settings.EssentialPackages = new System.Collections.Generic.List<UnityEngine.ScriptableObject>(settings.RequiredPackages);
+                settings.RequiredPackages.Clear();
+                UnityEditor.EditorUtility.SetDirty(settings);
+                UnityEditor.AssetDatabase.SaveAssets();
+            }
+
+            if (settings.EssentialPackages == null || settings.EssentialPackages.Count == 0)
                 return;
 
             _listRequest = Client.List(true);
@@ -50,26 +62,31 @@ namespace CodeSketch.Installer.Editor
                     "CodeSketchInstallerSettings"
                 );
 
-            foreach (var pkg in settings.RequiredPackages)
+            foreach (var pkgObj in settings.EssentialPackages)
             {
-                if (string.IsNullOrEmpty(pkg.PackageName))
+                var ia = pkgObj as CodeSketch.Installer.Runtime.IUPMPackageAsset;
+                if (ia == null) continue;
+
+                var entry = ia.ToEntry();
+
+                if (string.IsNullOrEmpty(entry.PackageName))
                     continue;
 
-                if (installed.Contains(pkg.PackageName))
+                if (installed.Contains(entry.PackageName))
                     continue;
 
-                if (pkg.InstallType == Runtime.UPMPackageInstallType.ScopedRegistry)
+                if (entry.InstallType == Runtime.UPMPackageInstallType.ScopedRegistry)
                 {
                     CodeSketch_ManifestUtility.EnsureScopedRegistry(
-                        pkg.RegistryName,
-                        pkg.RegistryUrl,
-                        pkg.RegistryScopes
+                        entry.RegistryName,
+                        entry.RegistryUrl,
+                        entry.RegistryScopes
                     );
 
                     AssetDatabase.Refresh();
                 }
 
-                Client.Add(pkg.ToEntry().GetInstallString());
+                Client.Add(entry.GetInstallString());
             }
         }
     }

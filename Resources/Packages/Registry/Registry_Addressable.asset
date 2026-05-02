@@ -9,16 +9,11 @@ MonoBehaviour:
   m_GameObject: {fileID: 0}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 0beee088b7dfd2047aa65ccaf1acd674, type: 3}
-  m_Name: Package-Newtonsoft Json
+  m_Script: {fileID: 11500000, guid: 6ee4285b5fa24684a94274ae1ac1a2ba, type: 3}
+  m_Name: Registry_Addressable
   m_EditorClassIdentifier: 
-  Name: com.vertx
-  InstallType: 0
-  PackageName: com.unity.nuget.newtonsoft-json
-  Version: 
-  GitUrl: 
-  RegistryName: 
-  RegistryUrl: 
-  RegistryScopes: []
+  Name: Addressable
+  PackageName: com.unity.addressables
+  Version: 2.8.1
   IsDependency: 0
   IsEssential: 1

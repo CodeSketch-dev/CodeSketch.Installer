@@ -13,13 +13,24 @@ MonoBehaviour:
   m_Name: CodeSketchInstallerSettings
   m_EditorClassIdentifier: 
   AlwaysShowOnStartup: 0
-  RequiredPackages:
+  RequiredPackages: []
+  EssentialPackages:
+  - {fileID: 11400000, guid: 8a926e1690f2fa849b8d258189ee657c, type: 2}
+  - {fileID: 11400000, guid: ed1383d5ee2f15c4ea43f53257dc8854, type: 2}
+  - {fileID: 11400000, guid: f0788cca33b400849941dc64d220ff23, type: 2}
+  - {fileID: 11400000, guid: 52fe054a55a73cf47b5a59b715ec1de1, type: 2}
   - {fileID: 11400000, guid: e202424ba29ace24183ac4fb50576708, type: 2}
   - {fileID: 11400000, guid: 224133ee3991d3b429a8b385d0c01bb9, type: 2}
   - {fileID: 11400000, guid: 68ed8c301eaa7f041b8652a727e50130, type: 2}
   - {fileID: 11400000, guid: 3f07f99292bf1024f8f4ef4864b424a7, type: 2}
-  - {fileID: 11400000, guid: b63f693a170ecaa48a1b9d8d24db6cd6, type: 2}
+  - {fileID: 11400000, guid: 94b2b964e71f4bf42bcddb1c4616cf1a, type: 2}
   - {fileID: 11400000, guid: baa590ffae956b64d9c29290090301ac, type: 2}
+  - {fileID: 11400000, guid: b63f693a170ecaa48a1b9d8d24db6cd6, type: 2}
+  OtherPackages:
+  - {fileID: 11400000, guid: 559781b22352f4842bc39d708e28634a, type: 2}
+  - {fileID: 11400000, guid: 881a14570bbc49640be57f1a868814dc, type: 2}
+  - {fileID: 11400000, guid: 9a18ef01a2e5ac743ba308b2aa73c1ac, type: 2}
+  - {fileID: 11400000, guid: ec49e123cfebd6446bd1cbb2819d3c19, type: 2}
   Features:
   - {fileID: 11400000, guid: dc4d080553f3242459cdc618b8af1536, type: 2}
   - {fileID: 11400000, guid: b18720f4455a133478b6120bed3fb1d8, type: 2}

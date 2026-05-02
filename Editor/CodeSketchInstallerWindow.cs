@@ -19,6 +19,9 @@ namespace CodeSketch.Installer.Editor
         readonly string[] _tabLabels = { "Packages", "Features", "ThirdParty" };
         int _thirdPartySelected = -1;
         Vector2 _packagesScroll = Vector2.zero;
+        Vector2 _essentialsScroll = Vector2.zero;
+        List<Rect> _essentialsRowRects = new List<Rect>();
+        List<Rect> _othersRowRects = new List<Rect>();
         Dictionary<string, bool> _selection = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
 
         CodeSketchInstallerSettings _settings;
@@ -40,6 +43,10 @@ namespace CodeSketch.Installer.Editor
         readonly HashSet<string> _ensuredRegistries = new();
 
         readonly List<UPMInstallEntry> _missingRequiredPackages = new();
+
+        // Drag & drop support
+        Rect _essentialsRect;
+        Rect _packagesRect;
 
         bool _needResolve;
         bool _resolveScheduled;
@@ -148,30 +155,18 @@ namespace CodeSketch.Installer.Editor
 
                     var toInstall = new List<UPMInstallEntry>();
 
-                    var requiredList = Resources.Load<CodeSketch.Installer.Runtime.RequiredPackageList>("RequiredPackageList");
-                    var optionalList = Resources.Load<CodeSketch.Installer.Runtime.OptionalPackageList>("OptionalPackageList");
-
-                    // helper to append essentials in order from a ScriptableObject list
-                    void AppendEssentials(IEnumerable<ScriptableObject> list)
+                    // Auto-install essentials from settings (legacy migration handled elsewhere)
+                    if (_settings != null && _settings.EssentialPackages != null && _settings.EssentialPackages.Count > 0)
                     {
-                        if (list == null) return;
-                        foreach (var obj in list)
+                        foreach (var obj in _settings.EssentialPackages)
                         {
                             if (obj == null) continue;
                             var ia = obj as IUPMPackageAsset;
                             if (ia == null) continue;
-                            if (!ia.IsEssential) continue;
                             var e = ia.ToEntry();
                             if (!IsInstalled(e)) toInstall.Add(e);
                         }
                     }
-
-                    // order: RequiredPackageList, OptionalPackageList, legacy settings.RequiredPackages
-                    if (requiredList != null) AppendEssentials(requiredList.Packages);
-                    if (optionalList != null) AppendEssentials(optionalList.Packages);
-
-                    if (_settings != null && _settings.RequiredPackages != null)
-                        AppendEssentials(_settings.RequiredPackages.Cast<ScriptableObject>());
 
                     if (toInstall.Count > 0)
                     {
@@ -237,114 +232,316 @@ namespace CodeSketch.Installer.Editor
         {
             _missingRequiredPackages.Clear();
 
-            if (_settings.RequiredPackages == null)
-                return;
-
-            foreach (var asset in _settings.RequiredPackages)
+            // consider essentials defined in settings and any Resources/Packages assets marked essential
+            if (_settings != null && _settings.EssentialPackages != null)
             {
-                if (asset == null)
-                    continue;
-
-                var entry = asset.ToEntry();
-
-                if (string.IsNullOrEmpty(entry.PackageName))
-                    continue;
-
-                if (IsInstalled(entry))
-                    continue;
-
-                _missingRequiredPackages.Add(entry);
+                foreach (var assetObj in _settings.EssentialPackages)
+                {
+                    if (assetObj == null) continue;
+                    var ia = assetObj as IUPMPackageAsset;
+                    if (ia == null) continue;
+                    var entry = ia.ToEntry();
+                    if (string.IsNullOrEmpty(entry.PackageName)) continue;
+                    if (IsInstalled(entry)) continue;
+                    _missingRequiredPackages.Add(entry);
+                }
             }
+
+            try
+            {
+                var resourcesPackages = Resources.LoadAll<ScriptableObject>("Packages");
+                if (resourcesPackages != null && resourcesPackages.Length > 0)
+                {
+                    foreach (var rp in resourcesPackages)
+                    {
+                        if (rp == null) continue;
+                        var ia = rp as IUPMPackageAsset;
+                        if (ia == null) continue;
+                        if (!ia.IsEssential) continue;
+                        var entry = ia.ToEntry();
+                        if (string.IsNullOrEmpty(entry.PackageName)) continue;
+                        if (IsInstalled(entry)) continue;
+                        // avoid duplicates
+                        if (!_missingRequiredPackages.Exists(x => x.PackageName == entry.PackageName))
+                            _missingRequiredPackages.Add(entry);
+                    }
+                }
+            }
+            catch { }
         }
 
         void DrawRequiredPackagesSection()
         {
             GUILayout.Label("Packages", EditorStyles.boldLabel);
 
-            // load lists (new ScriptableObjects)
-            var requiredList = Resources.Load<CodeSketch.Installer.Runtime.RequiredPackageList>("RequiredPackageList");
-            var optionalList = Resources.Load<CodeSketch.Installer.Runtime.OptionalPackageList>("OptionalPackageList");
-
-            // fallback to old settings.RequiredPackages if present
+            // build combined list from settings and any ScriptableObject package assets under Resources/Packages
             var combined = new List<ScriptableObject>();
-            if (requiredList != null && requiredList.Packages != null) combined.AddRange(requiredList.Packages);
-            if (optionalList != null && optionalList.Packages != null) combined.AddRange(optionalList.Packages);
-            if ((_settings.RequiredPackages != null) && _settings.RequiredPackages.Count > 0)
-                combined.AddRange(_settings.RequiredPackages.Cast<ScriptableObject>());
+            if (_settings != null)
+            {
+                if (_settings.EssentialPackages != null && _settings.EssentialPackages.Count > 0)
+                    combined.AddRange(_settings.EssentialPackages.Cast<ScriptableObject>());
+                if (_settings.OtherPackages != null && _settings.OtherPackages.Count > 0)
+                    combined.AddRange(_settings.OtherPackages.Cast<ScriptableObject>());
+            }
+
+            try
+            {
+                var resourcesPackages = Resources.LoadAll<ScriptableObject>("Packages");
+                if (resourcesPackages != null && resourcesPackages.Length > 0)
+                {
+                    bool settingsChanged = false;
+                    foreach (var rp in resourcesPackages)
+                    {
+                        if (rp == null) continue;
+                        if (!combined.Contains(rp))
+                            combined.Add(rp);
+
+                        bool inSettings = false;
+                        if (_settings != null)
+                        {
+                            if ((_settings.EssentialPackages != null && _settings.EssentialPackages.Contains(rp)) ||
+                                (_settings.OtherPackages != null && _settings.OtherPackages.Contains(rp)))
+                                inSettings = true;
+                        }
+
+                        var ia = rp as IUPMPackageAsset;
+                        bool wantEssential = ia != null && ia.IsEssential;
+
+                        if (!inSettings && _settings != null)
+                        {
+                            if (wantEssential)
+                            {
+                                if (_settings.EssentialPackages == null) _settings.EssentialPackages = new List<ScriptableObject>();
+                                _settings.EssentialPackages.Add(rp);
+                                EditorUtility.SetDirty(_settings);
+                                settingsChanged = true;
+                            }
+                            else
+                            {
+                                if (_settings.OtherPackages == null) _settings.OtherPackages = new List<ScriptableObject>();
+                                _settings.OtherPackages.Add(rp);
+                                EditorUtility.SetDirty(_settings);
+                                settingsChanged = true;
+                            }
+                        }
+                    }
+
+                    if (settingsChanged)
+                        AssetDatabase.SaveAssets();
+                }
+            }
+            catch { }
 
             if (combined.Count == 0)
             {
-                EditorGUILayout.HelpBox("No packages defined. Create RequiredPackageList/OptionalPackageList assets.", MessageType.Info);
+                EditorGUILayout.HelpBox("No packages defined. Create package ScriptableObjects under Resources/Packages or add them to CodeSketchInstallerSettings.", MessageType.Info);
                 GUILayout.Space(10);
                 return;
             }
 
             // scrollable list with checkboxes
-            _packagesScroll = EditorGUILayout.BeginScrollView(_packagesScroll, GUILayout.Height(220));
+            // split into two scroll lists: Essentials (top) and Packages (bottom)
+            var essentials = new List<ScriptableObject>();
+            var others = new List<ScriptableObject>();
             for (int i = 0; i < combined.Count; i++)
             {
                 var aObj = combined[i];
                 if (aObj == null) continue;
-
-                string key = aObj.GetInstanceID().ToString();
                 IUPMPackageAsset ia = aObj as IUPMPackageAsset;
                 bool isEssential = false;
                 if (ia != null)
-                    isEssential = ia.IsEssential || (requiredList != null && requiredList.Packages.Contains(aObj)) || (_settings.RequiredPackages != null && _settings.RequiredPackages.Any(x => x == aObj));
-                bool current = false;
-                _selection.TryGetValue(key, out current);
-
-                EditorGUILayout.BeginHorizontal();
-                bool next;
-                // determine initial toggle state: if we've stored a value use it, otherwise default essentials=true, optional=false
-                bool hasValue = _selection.TryGetValue(key, out var stored);
-                bool initial = hasValue ? stored : isEssential;
-                next = GUILayout.Toggle(initial, "", GUILayout.Width(18));
-                if (isEssential)
-                    EditorGUILayout.LabelField("(Essential)", GUILayout.Width(80));
-                _selection[key] = next;
-
-                // persist change back to asset: if the package asset exposes IsEssential, update it when user toggles
-                try
                 {
-                    if (ia != null && ia.IsEssential != next)
+                    bool settingsHas = false;
+                    if (_settings != null)
                     {
-                        ia.IsEssential = next;
-                        var so = aObj as ScriptableObject;
-                        if (so != null)
-                        {
-                            EditorUtility.SetDirty(so);
-                            AssetDatabase.SaveAssets();
-                        }
+                        if ((_settings.EssentialPackages != null && _settings.EssentialPackages.Any(x => x == aObj)))
+                            settingsHas = true;
                     }
-                }
-                catch { }
 
-                string label;
-                if (ia != null)
-                {
-                    var temp = ia.ToEntry();
-                    label = string.IsNullOrEmpty(temp.Name) ? temp.PackageName : temp.Name + " (" + temp.PackageName + ")";
+                    isEssential = ia.IsEssential || settingsHas;
                 }
-                else
-                {
-                    label = aObj.name;
-                }
-                EditorGUILayout.LabelField(label);
 
-                // installed status
-                bool installed = false;
-                if (ia != null)
+                if (isEssential) essentials.Add(aObj);
+                else others.Add(aObj);
+            }
+
+            // prepare row rect trackers
+            _essentialsRowRects.Clear();
+
+            GUILayout.Label("Essential Packages", EditorStyles.boldLabel);
+            EditorGUILayout.BeginVertical(GUI.skin.box);
+            _essentialsScroll = EditorGUILayout.BeginScrollView(_essentialsScroll, GUILayout.Height(120));
+            for (int i = 0; i < essentials.Count; i++)
+            {
+                var aObj = essentials[i];
+                if (aObj == null) continue;
+                EditorGUILayout.BeginHorizontal();
+                GUILayout.Space(4);
+                // selection checkbox
+                string key = aObj.GetInstanceID().ToString();
+                bool sel = false;
+                _selection.TryGetValue(key, out sel);
+                bool nextSel = EditorGUILayout.Toggle(sel, GUILayout.Width(18));
+                if (nextSel != sel)
                 {
-                    var entry = ia.ToEntry();
-                    installed = IsInstalled(entry);
+                    _selection[key] = nextSel;
                 }
+
+                // reorder buttons
+                if (GUILayout.Button("▲", GUILayout.Width(18))) MoveItemInSettings(aObj, true, -1);
+                if (GUILayout.Button("▼", GUILayout.Width(18))) MoveItemInSettings(aObj, true, +1);
+
+                GUILayout.Label("☰", GUILayout.Width(18));
+                EditorGUILayout.LabelField(aObj.name);
+
+                // quick toggle button to move to Other Packages
+                if (GUILayout.Button("⇄", GUILayout.Width(24)))
+                {
+                    ToggleEssential(aObj, false);
+                }
+
                 GUILayout.FlexibleSpace();
+                var ia = aObj as IUPMPackageAsset;
+                bool installed = ia != null && IsInstalled(ia.ToEntry());
                 EditorGUILayout.LabelField(installed ? "Installed" : "Not installed", GUILayout.Width(120));
-
                 EditorGUILayout.EndHorizontal();
+
+                // store rect for this row to support drop insertion
+                try { _essentialsRowRects.Add(GUILayoutUtility.GetLastRect()); } catch { }
+
+                // start drag when clicking the label area
+                var lastRect = GUILayoutUtility.GetLastRect();
+                var e = Event.current;
+                if (e.type == EventType.MouseDown && e.button == 0 && lastRect.Contains(e.mousePosition))
+                {
+                    try
+                    {
+                        DragAndDrop.PrepareStartDrag();
+                        DragAndDrop.objectReferences = new UnityEngine.Object[] { aObj };
+                        DragAndDrop.StartDrag(aObj.name);
+                        e.Use();
+                    }
+                    catch { }
+                }
             }
             EditorGUILayout.EndScrollView();
+            EditorGUILayout.EndVertical();
+
+            // capture rect for drop handling (normalize to full width and expected height)
+            _essentialsRect = GUILayoutUtility.GetLastRect();
+            _essentialsRect.x = 0;
+            _essentialsRect.width = position.width;
+            _essentialsRect.height = 120 + 8;
+
+            GUILayout.Space(6);
+
+            _othersRowRects.Clear();
+
+            GUILayout.Label("Other Packages", EditorStyles.boldLabel);
+            EditorGUILayout.BeginVertical(GUI.skin.box);
+            _packagesScroll = EditorGUILayout.BeginScrollView(_packagesScroll, GUILayout.Height(220));
+            for (int i = 0; i < others.Count; i++)
+            {
+                var aObj = others[i];
+                if (aObj == null) continue;
+                EditorGUILayout.BeginHorizontal();
+                GUILayout.Space(4);
+                // selection checkbox
+                string key = aObj.GetInstanceID().ToString();
+                bool sel = false;
+                _selection.TryGetValue(key, out sel);
+                bool nextSel = EditorGUILayout.Toggle(sel, GUILayout.Width(18));
+                if (nextSel != sel)
+                {
+                    _selection[key] = nextSel;
+                }
+                // reorder buttons for OtherPackages
+                if (GUILayout.Button("▲", GUILayout.Width(18))) MoveItemInSettings(aObj, false, -1);
+                if (GUILayout.Button("▼", GUILayout.Width(18))) MoveItemInSettings(aObj, false, +1);
+
+                GUILayout.Label("☰", GUILayout.Width(18));
+                EditorGUILayout.LabelField(aObj.name);
+
+                // quick toggle button to move to Essential Packages
+                if (GUILayout.Button("⇄", GUILayout.Width(24)))
+                {
+                    ToggleEssential(aObj, true);
+                }
+
+                GUILayout.FlexibleSpace();
+                var ia = aObj as IUPMPackageAsset;
+                bool installed = ia != null && IsInstalled(ia.ToEntry());
+                EditorGUILayout.LabelField(installed ? "Installed" : "Not installed", GUILayout.Width(120));
+                EditorGUILayout.EndHorizontal();
+
+                // store rect for this row to support drop insertion
+                try { _othersRowRects.Add(GUILayoutUtility.GetLastRect()); } catch { }
+
+                var lastRect = GUILayoutUtility.GetLastRect();
+                var e = Event.current;
+                if (e.type == EventType.MouseDown && e.button == 0 && lastRect.Contains(e.mousePosition))
+                {
+                    try
+                    {
+                        DragAndDrop.PrepareStartDrag();
+                        DragAndDrop.objectReferences = new UnityEngine.Object[] { aObj };
+                        DragAndDrop.StartDrag(aObj.name);
+                        e.Use();
+                    }
+                    catch { }
+                }
+            }
+            EditorGUILayout.EndScrollView();
+            EditorGUILayout.EndVertical();
+
+            // capture rect for drop handling (normalize to full width and expected height)
+            _packagesRect = GUILayoutUtility.GetLastRect();
+            _packagesRect.x = 0;
+            _packagesRect.width = position.width;
+            _packagesRect.height = 220 + 8;
+
+            // Handle drag updates / perform between the two panels
+            var evt = Event.current;
+            if ((evt.type == EventType.DragUpdated || evt.type == EventType.DragPerform) && DragAndDrop.objectReferences != null && DragAndDrop.objectReferences.Length > 0)
+            {
+                var mouse = evt.mousePosition;
+                bool overEss = _essentialsRect.Contains(mouse);
+                bool overPack = _packagesRect.Contains(mouse);
+                if (overEss || overPack)
+                {
+                    DragAndDrop.visualMode = DragAndDropVisualMode.Move;
+                    if (evt.type == EventType.DragPerform)
+                    {
+                        DragAndDrop.AcceptDrag();
+                        foreach (var obj in DragAndDrop.objectReferences)
+                        {
+                            var so = obj as ScriptableObject;
+                            if (so == null) continue;
+                            var ia = so as IUPMPackageAsset;
+                            if (ia == null) continue;
+
+                            if (overEss)
+                            {
+                                int insertIndex = ComputeInsertIndex(_essentialsRowRects, evt.mousePosition.y, _essentialsScroll.y, _essentialsRect.y);
+                                MoveItemAcrossLists(so, true, insertIndex);
+                            }
+                            else if (overPack)
+                            {
+                                int insertIndex = ComputeInsertIndex(_othersRowRects, evt.mousePosition.y, _packagesScroll.y, _packagesRect.y);
+                                MoveItemAcrossLists(so, false, insertIndex);
+                            }
+                        }
+                        AssetDatabase.SaveAssets();
+                        RefreshPackageState();
+                        Repaint();
+                        evt.Use();
+                    }
+                    else
+                    {
+                        DragAndDrop.visualMode = DragAndDropVisualMode.Move;
+                    }
+                }
+            }
 
             GUILayout.Space(6);
 
@@ -353,21 +550,48 @@ namespace CodeSketch.Installer.Editor
             if (GUILayout.Button("Install Selected"))
             {
                 var toInstall = new List<UPMInstallEntry>();
-                foreach (var aObj in combined)
+
+                // 1) Essentials first (respect ordering from settings.EssentialPackages if present)
+                var orderedEssentials = new List<ScriptableObject>();
+                if (_settings != null && _settings.EssentialPackages != null && _settings.EssentialPackages.Count > 0)
+                    orderedEssentials.AddRange(_settings.EssentialPackages);
+                else // fall back to the visible essentials ordering
+                    orderedEssentials.AddRange(essentials);
+
+                foreach (var aObj in orderedEssentials)
                 {
                     if (aObj == null) continue;
                     string key = aObj.GetInstanceID().ToString();
-                    bool sel = false;
-                    _selection.TryGetValue(key, out sel);
-                    bool isEssential = (requiredList != null && requiredList.Packages.Contains(aObj)) || (_settings.RequiredPackages != null && _settings.RequiredPackages.Any(x => x == aObj));
-                    if (sel || isEssential)
+                    bool sel = false; _selection.TryGetValue(key, out sel);
+
+                    var ia2 = aObj as IUPMPackageAsset;
+                    if (ia2 == null) continue;
+
+                    if (sel || ia2.IsEssential)
                     {
-                        var ia2 = aObj as IUPMPackageAsset;
-                        if (ia2 == null) continue;
                         var e = ia2.ToEntry();
-                        if (!IsInstalled(e))
-                            toInstall.Add(e);
+                        if (!IsInstalled(e)) toInstall.Add(e);
                     }
+                }
+
+                // 2) Then add other selected packages in settings.OtherPackages order if available, otherwise in combined order
+                var otherOrder = new List<ScriptableObject>();
+                if (_settings != null && _settings.OtherPackages != null && _settings.OtherPackages.Count > 0)
+                    otherOrder.AddRange(_settings.OtherPackages);
+                else
+                    otherOrder.AddRange(combined.Where(x => !orderedEssentials.Contains(x)));
+
+                foreach (var aObj in otherOrder)
+                {
+                    if (aObj == null) continue;
+                    string key = aObj.GetInstanceID().ToString();
+                    bool sel = false; _selection.TryGetValue(key, out sel);
+                    if (!sel) continue;
+
+                    var ia2 = aObj as IUPMPackageAsset;
+                    if (ia2 == null) continue;
+                    var e = ia2.ToEntry();
+                    if (!IsInstalled(e)) toInstall.Add(e);
                 }
 
                 if (toInstall.Count > 0)
@@ -540,6 +764,131 @@ namespace CodeSketch.Installer.Editor
                 _requiredInstallQueue.Enqueue(entry);
 
             InstallNextRequiredPackage();
+        }
+
+        void ToggleEssential(ScriptableObject so, bool wantEssential)
+        {
+            if (so == null) return;
+            var ia = so as IUPMPackageAsset;
+            if (ia == null) return;
+
+            if (ia.IsEssential == wantEssential)
+                return;
+
+            ia.IsEssential = wantEssential;
+
+            try
+            {
+                if (_settings != null)
+                {
+                    if (wantEssential)
+                    {
+                        if (_settings.OtherPackages != null && _settings.OtherPackages.Remove(so))
+                            EditorUtility.SetDirty(_settings);
+
+                        if (_settings.EssentialPackages == null) _settings.EssentialPackages = new List<ScriptableObject>();
+                        if (!_settings.EssentialPackages.Contains(so)) _settings.EssentialPackages.Add(so);
+                        EditorUtility.SetDirty(_settings);
+                    }
+                    else
+                    {
+                        if (_settings.EssentialPackages != null && _settings.EssentialPackages.Remove(so))
+                            EditorUtility.SetDirty(_settings);
+
+                        if (_settings.OtherPackages == null) _settings.OtherPackages = new List<ScriptableObject>();
+                        if (!_settings.OtherPackages.Contains(so)) _settings.OtherPackages.Add(so);
+                        EditorUtility.SetDirty(_settings);
+                    }
+                }
+            }
+            catch { }
+
+            EditorUtility.SetDirty(so);
+            AssetDatabase.SaveAssets();
+            RefreshPackageState();
+            Repaint();
+        }
+
+        void MoveItemInSettings(ScriptableObject so, bool inEssentialList, int delta)
+        {
+            if (so == null || delta == 0 || _settings == null)
+                return;
+
+            List<ScriptableObject> list = inEssentialList ? _settings.EssentialPackages : _settings.OtherPackages;
+            if (list == null)
+                return;
+
+            int idx = list.IndexOf(so);
+            if (idx < 0)
+                return;
+
+            int newIdx = Mathf.Clamp(idx + delta, 0, list.Count - 1);
+            if (newIdx == idx)
+                return;
+
+            list.RemoveAt(idx);
+            list.Insert(newIdx, so);
+            EditorUtility.SetDirty(_settings);
+            AssetDatabase.SaveAssets();
+            RefreshPackageState();
+            Repaint();
+        }
+
+        int ComputeInsertIndex(List<Rect> rects, float mouseY, float scrollY, float scrollAreaTop)
+        {
+            if (rects == null || rects.Count == 0)
+                return 0;
+
+            // If mouse is above the first visible row, insert at start
+            var first = rects[0];
+            float firstVisibleTop = first.y - scrollY + scrollAreaTop;
+            if (mouseY < firstVisibleTop)
+                return 0;
+
+            // Iterate rows using their visible positions (accounting for scroll)
+            for (int i = 0; i < rects.Count; i++)
+            {
+                var r = rects[i];
+                float visibleTop = r.y - scrollY + scrollAreaTop;
+                float visibleMid = visibleTop + r.height * 0.5f;
+                if (mouseY < visibleMid)
+                    return i;
+            }
+
+            // default: after last
+            return rects.Count;
+        }
+
+        void MoveItemAcrossLists(ScriptableObject so, bool toEssential, int insertIndex)
+        {
+            if (so == null || _settings == null) return;
+
+            try
+            {
+                // remove from both lists
+                if (_settings.EssentialPackages != null && _settings.EssentialPackages.Remove(so)) EditorUtility.SetDirty(_settings);
+                if (_settings.OtherPackages != null && _settings.OtherPackages.Remove(so)) EditorUtility.SetDirty(_settings);
+
+                var target = toEssential ? _settings.EssentialPackages : _settings.OtherPackages;
+                if (target == null)
+                {
+                    target = new List<ScriptableObject>();
+                    if (toEssential) _settings.EssentialPackages = target; else _settings.OtherPackages = target;
+                }
+
+                insertIndex = Mathf.Clamp(insertIndex, 0, target.Count);
+                if (!target.Contains(so)) target.Insert(insertIndex, so);
+
+                var ia = so as IUPMPackageAsset;
+                if (ia != null) ia.IsEssential = toEssential;
+
+                EditorUtility.SetDirty(so);
+                EditorUtility.SetDirty(_settings);
+                AssetDatabase.SaveAssets();
+                RefreshPackageState();
+                Repaint();
+            }
+            catch { }
         }
 
         void InstallNextRequiredPackage()
@@ -1198,7 +1547,18 @@ namespace CodeSketch.Installer.Editor
         {
             var settings = Resources.Load<CodeSketchInstallerSettings>(SETTINGS_RESOURCE_PATH);
             if (settings != null)
+            {
+                // migrate legacy RequiredPackages into EssentialPackages if needed
+                if ((settings.EssentialPackages == null || settings.EssentialPackages.Count == 0) && settings.RequiredPackages != null && settings.RequiredPackages.Count > 0)
+                {
+                    settings.EssentialPackages = new List<ScriptableObject>(settings.RequiredPackages);
+                    settings.RequiredPackages.Clear();
+                    EditorUtility.SetDirty(settings);
+                    AssetDatabase.SaveAssets();
+                }
+
                 return settings;
+            }
 
             settings = CreateInstance<CodeSketchInstallerSettings>();
 

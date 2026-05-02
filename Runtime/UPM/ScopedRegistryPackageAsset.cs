@@ -2,13 +2,18 @@ using UnityEngine;
 
 namespace CodeSketch.Installer.Runtime
 {
-    [CreateAssetMenu(menuName = "CodeSketch/UPM/Registry Package", fileName = "RegistryPackage")]
-    public class RegistryPackageAsset : ScriptableObject, IUPMPackageAsset
+    [CreateAssetMenu(menuName = "CodeSketch/UPM/Scoped Registry Package", fileName = "ScopedRegistryPackage")]
+    public class ScopedRegistryPackageAsset : ScriptableObject, IUPMPackageAsset
     {
         [Header("Info")] public string Name;
 
         [Header("Package")] public string PackageName;
         public string Version;
+
+        [Header("Scoped Registry")]
+        public string RegistryName;
+        public string RegistryUrl;
+        public string[] RegistryScopes;
 
         [Header("Flags")] public bool IsDependency = false;
 
@@ -21,9 +26,12 @@ namespace CodeSketch.Installer.Runtime
             return new UPMInstallEntry
             {
                 Name = Name,
-                InstallType = UPMPackageInstallType.UnityRegistry,
+                InstallType = UPMPackageInstallType.ScopedRegistry,
                 PackageName = PackageName,
                 Version = Version,
+                RegistryName = RegistryName,
+                RegistryUrl = RegistryUrl,
+                RegistryScopes = RegistryScopes,
                 IsDependency = IsDependency
             };
         }

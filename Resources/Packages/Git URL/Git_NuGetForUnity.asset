@@ -9,16 +9,12 @@ MonoBehaviour:
   m_GameObject: {fileID: 0}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 0beee088b7dfd2047aa65ccaf1acd674, type: 3}
-  m_Name: Package-Addressable
+  m_Script: {fileID: 11500000, guid: 6c97fad49616da04bb3539e18d8f1e7d, type: 3}
+  m_Name: Git_NuGetForUnity
   m_EditorClassIdentifier: 
-  Name: 'Addressable '
-  InstallType: 0
-  PackageName: com.unity.addressables
-  Version: 1.22.3
-  GitUrl: 
-  RegistryName: 
-  RegistryUrl: 
-  RegistryScopes: []
+  Name: NuGetForUnity
+  GitUrl: https://github.com/GlitchEnzo/NuGetForUnity.git?path=/src/NuGetForUnity
+  PackageName: com.github-glitchenzo.nugetforunity
+  Version: 
   IsDependency: 0
-  IsEssential: 1
+  IsEssential: 0

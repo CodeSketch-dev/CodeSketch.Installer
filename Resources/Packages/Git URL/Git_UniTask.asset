@@ -9,16 +9,12 @@ MonoBehaviour:
   m_GameObject: {fileID: 0}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 0beee088b7dfd2047aa65ccaf1acd674, type: 3}
-  m_Name: Package-UniTask
+  m_Script: {fileID: 11500000, guid: 6c97fad49616da04bb3539e18d8f1e7d, type: 3}
+  m_Name: Git_UniTask
   m_EditorClassIdentifier: 
   Name: UniTask
-  InstallType: 1
+  GitUrl: https://github.com/Cysharp/UniTask.git?path=src/UniTask/Assets/Plugins/UniTask
   PackageName: com.cysharp.unitask
   Version: 
-  GitUrl: https://github.com/Cysharp/UniTask.git?path=src/UniTask/Assets/Plugins/UniTask
-  RegistryName: 
-  RegistryUrl: 
-  RegistryScopes: []
   IsDependency: 0
   IsEssential: 1
