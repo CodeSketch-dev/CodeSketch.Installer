@@ -148,40 +148,29 @@ namespace CodeSketch.Installer.PrimeTweenCustom
                 var packageCacheDir = Path.Combine(projectRoot, "Library", "PackageCache");
                 if (Directory.Exists(packageCacheDir))
                 {
-                    Debug.Log($"PrimeTweenInstaller: searching PackageCache '{packageCacheDir}' for '{fileName}'");
                     var allDirs = Directory.GetDirectories(packageCacheDir, "*", SearchOption.TopDirectoryOnly);
+                    // Prefer package cache entries that match the code sketch installer package name (ignore hash suffix)
                     foreach (var dir in allDirs)
                     {
+                        var name = Path.GetFileName(dir).ToLowerInvariant();
+                        if (!name.Contains("codesketch.installer") && !name.Contains("com.codesketch.installer"))
+                            continue;
                         var candidate1 = Path.Combine(dir, "Plugins", "PrimeTween", "internal", fileName);
-                        Debug.Log($"PrimeTweenInstaller: testing '{candidate1}'");
-                        if (File.Exists(candidate1)) { Debug.Log($"PrimeTweenInstaller: found '{candidate1}'"); return candidate1; }
+                        if (File.Exists(candidate1)) return candidate1;
                         var candidate1b = Path.Combine(dir, "Editor", "Plugins", "PrimeTween", "internal", fileName);
-                        Debug.Log($"PrimeTweenInstaller: testing '{candidate1b}'");
-                        if (File.Exists(candidate1b)) { Debug.Log($"PrimeTweenInstaller: found '{candidate1b}'"); return candidate1b; }
+                        if (File.Exists(candidate1b)) return candidate1b;
                         var candidate2 = Path.Combine(dir, "PrimeTween", "internal", fileName);
-                        Debug.Log($"PrimeTweenInstaller: testing '{candidate2}'");
-                        if (File.Exists(candidate2)) { Debug.Log($"PrimeTweenInstaller: found '{candidate2}'"); return candidate2; }
+                        if (File.Exists(candidate2)) return candidate2;
                         var candidate3 = Path.Combine(dir, "internal", fileName);
-                        Debug.Log($"PrimeTweenInstaller: testing '{candidate3}'");
-                        if (File.Exists(candidate3)) { Debug.Log($"PrimeTweenInstaller: found '{candidate3}'"); return candidate3; }
+                        if (File.Exists(candidate3)) return candidate3;
                     }
                     try
                     {
                         var matches = Directory.GetFiles(packageCacheDir, fileName, SearchOption.AllDirectories);
                         if (matches != null && matches.Length > 0)
-                        {
-                            Debug.Log($"PrimeTweenInstaller: deep match in PackageCache: '{matches[0]}'");
                             return matches[0];
-                        }
-                        else
-                        {
-                            Debug.Log("PrimeTweenInstaller: no matches found in PackageCache");
-                        }
                     }
-                    catch (Exception ex)
-                    {
-                        Debug.LogWarning($"PrimeTweenInstaller: error searching PackageCache: {ex.Message}");
-                    }
+                    catch { }
                 }
 
                 var packagesDir = Path.Combine(projectRoot, "Packages");
@@ -242,50 +231,9 @@ namespace CodeSketch.Installer.PrimeTweenCustom
             }
             try
             {
-                Debug.Log($"PrimeTweenInstaller: TgzPath='{TgzPath}', NewTgzPath='{NewTgzPath}'");
                 string full = Path.GetFullPath(TgzPath);
-                Debug.Log($"PrimeTweenInstaller: full path='{full}'");
                 if (!File.Exists(full))
                 {
-                    Debug.LogError($"PrimeTweenInstaller: archive not found at '{full}'");
-                    try
-                    {
-                        var projectRoot = Path.GetFullPath(Path.Combine(Application.dataPath, "..")).Replace('\\', '/');
-                        Debug.Log($"PrimeTweenInstaller: projectRoot='{projectRoot}'");
-                        var packageCacheDir = Path.Combine(projectRoot, "Library", "PackageCache");
-                        if (Directory.Exists(packageCacheDir))
-                        {
-                            Debug.Log($"PrimeTweenInstaller: listing PackageCache entries under '{packageCacheDir}'");
-                            foreach (var d in Directory.GetDirectories(packageCacheDir, "*", SearchOption.TopDirectoryOnly))
-                            {
-                                Debug.Log($"  PackageCache entry: {d}");
-                            }
-                        }
-
-                        var packagesDir = Path.Combine(projectRoot, "Packages");
-                        var searchFile = Path.GetFileName(TgzPath) ?? "com.kyrylokuzyk.primetween.tgz";
-                        if (Directory.Exists(packagesDir))
-                        {
-                            Debug.Log($"PrimeTweenInstaller: searching Packages for '{searchFile}'");
-                            var pkgMatches = Directory.GetFiles(packagesDir, searchFile, SearchOption.AllDirectories);
-                            foreach (var m in pkgMatches)
-                                Debug.Log($"  Packages match: {m}");
-                        }
-
-                        Debug.Log($"PrimeTweenInstaller: searching entire project for '{searchFile}' (this may take a moment)");
-                        try
-                        {
-                            var allMatches = Directory.GetFiles(projectRoot, searchFile, SearchOption.AllDirectories);
-                            foreach (var m in allMatches)
-                                Debug.Log($"  Project match: {m}");
-                        }
-                        catch (Exception ex2)
-                        {
-                            Debug.LogWarning($"PrimeTweenInstaller: error searching project: {ex2.Message}");
-                        }
-                    }
-                    catch { }
-
                     EditorUtility.DisplayDialog("PrimeTween Installer", $"Archive not found: {full}", "OK");
                     return;
                 }
