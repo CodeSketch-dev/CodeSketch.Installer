@@ -24,23 +24,60 @@ namespace CodeSketch.Installer.Editor
         {
             try
             {
-                var windowType = AppDomain.CurrentDomain.GetAssemblies()
-                    .SelectMany(a => { try { return a.GetTypes(); } catch { return new Type[0]; } })
-                    .FirstOrDefault(t => t.Name == "CodeSketchInstallerWindow");
-                if (windowType == null) return;
+                var targetTypeName = "CodeSketch.Installer.PrimeTweenCustom.CodeSketchPrimeTweenInstallerInspector";
+                Type type = null;
 
-                var fi = windowType.GetField("_instance", BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public);
-                if (fi == null) return;
+                // Prefer types from assemblies that are not in the PackageCache (i.e., the Assets/ copy)
+                foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
+                {
+                    try
+                    {
+                        var t = asm.GetType(targetTypeName, false, false);
+                        if (t != null)
+                        {
+                            var loc = (asm.Location ?? string.Empty).Replace('\\', '/');
+                            if (!string.IsNullOrEmpty(loc) && !loc.Contains("PackageCache") && !loc.Contains("/packages/"))
+                            {
+                                type = t;
+                                break;
+                            }
+                            // keep as fallback if nothing better found
+                            if (type == null) type = t;
+                        }
+                    }
+                    catch { }
+                }
 
-                var inst = fi.GetValue(null);
-                if (inst == null) return;
+                // final fallback
+                if (type == null)
+                    type = Type.GetType(targetTypeName, false);
 
-                if (s_processedInstance == inst) return;
-                s_processedInstance = inst;
+                if (type == null)
+                {
+                    Debug.LogWarning("PrimeTweenInstallerRunner: installer type not found.");
+                    EditorApplication.update -= Update;
+                    return;
+                }
 
-                EditorApplication.delayCall += RunPrimeTweenCheck;
+                var checkMethod = type.GetMethod("CheckPluginInstalled", BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public);
+                var installMethod = type.GetMethod("InstallPlugin", BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public);
+
+                if (checkMethod == null || installMethod == null)
+                {
+                    Debug.LogWarning("PrimeTweenInstallerRunner: installer methods not found.");
+                    EditorApplication.update -= Update;
+                    return;
+                }
+
+                // We have a valid installer type; run the check once and stop updating
+                RunPrimeTweenCheck();
+                EditorApplication.update -= Update;
             }
-            catch { }
+            catch (Exception ex)
+            {
+                Debug.LogWarning($"PrimeTweenInstallerRunner: {ex.Message}");
+                EditorApplication.update -= Update;
+            }
         }
 
         static void RunPrimeTweenCheck()
