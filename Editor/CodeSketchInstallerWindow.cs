@@ -170,6 +170,7 @@ namespace CodeSketch.Installer.Editor
 
                     if (toInstall.Count > 0)
                     {
+                        try { Debug.Log("[Installer] Auto-install essentials: " + string.Join(", ", toInstall.Select(t => t.Name))); } catch { }
                         StartInstallPackages(toInstall);
                     }
                 }
@@ -1009,6 +1010,7 @@ namespace CodeSketch.Installer.Editor
             {
                 try
                 {
+                    try { Debug.Log($"[Installer] Installing UnityPackage required: {pkg.Name} (pkgPath={pkg.GitUrl})"); } catch { }
                     BeginBusy($"Importing {pkg.Name}...");
 
                     string path = null;
@@ -1024,6 +1026,11 @@ namespace CodeSketch.Installer.Editor
                                                                   || (!string.IsNullOrEmpty(x.FilePath) && Path.GetFileName(x.FilePath).Equals(pkg.GitUrl, StringComparison.OrdinalIgnoreCase)));
                             if (match != null) path = match.FilePath;
                         }
+                    }
+
+                    if (string.IsNullOrEmpty(path))
+                    {
+                        try { Debug.LogWarning($"[Installer] UnityPackage path not found for {pkg.Name}"); } catch { }
                     }
 
                     if (!string.IsNullOrEmpty(path))
@@ -1509,9 +1516,13 @@ namespace CodeSketch.Installer.Editor
 
         void StartInstallPackages(List<UPMInstallEntry> entries)
         {
+            try { Debug.Log($"[Installer] StartInstallPackages: {entries?.Count ?? 0} entries"); } catch { }
             _featureInstallQueue.Clear();
             foreach (var e in entries)
+            {
+                try { Debug.Log($"[Installer] Queueing install: {e.Name} (type={e.InstallType}, pkg={e.PackageName}, url={e.GitUrl})"); } catch { }
                 _featureInstallQueue.Enqueue(e);
+            }
 
             InstallNextFeaturePackage();
         }
@@ -1549,6 +1560,7 @@ namespace CodeSketch.Installer.Editor
             {
                 try
                 {
+                    try { Debug.Log($"[Installer] Installing UnityPackage essential: {pkg.Name} (pkgPath={pkg.GitUrl})"); } catch { }
                     BeginBusy($"Importing {pkg.Name}...");
 
                     // try to resolve full path: if pkg.GitUrl is absolute or relative path, prefer that; otherwise search known third-party locations
@@ -1565,6 +1577,11 @@ namespace CodeSketch.Installer.Editor
                                                                   || (!string.IsNullOrEmpty(x.FilePath) && Path.GetFileName(x.FilePath).Equals(pkg.GitUrl, StringComparison.OrdinalIgnoreCase)));
                             if (match != null) path = match.FilePath;
                         }
+                    }
+
+                    if (string.IsNullOrEmpty(path))
+                    {
+                        try { Debug.LogWarning($"[Installer] UnityPackage path not found for {pkg.Name}"); } catch { }
                     }
 
                     if (!string.IsNullOrEmpty(path))
