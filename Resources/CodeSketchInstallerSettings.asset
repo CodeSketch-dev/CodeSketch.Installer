@@ -26,6 +26,8 @@ MonoBehaviour:
   - {fileID: 11400000, guid: 94b2b964e71f4bf42bcddb1c4616cf1a, type: 2}
   - {fileID: 11400000, guid: baa590ffae956b64d9c29290090301ac, type: 2}
   - {fileID: 11400000, guid: b63f693a170ecaa48a1b9d8d24db6cd6, type: 2}
+  - {fileID: 11400000, guid: f150c425260a8644ca46a52012490ab2, type: 2}
+  - {fileID: 11400000, guid: 800b3b81affb7b54c89eda6da1f8f798, type: 2}
   OtherPackages:
   - {fileID: 11400000, guid: 559781b22352f4842bc39d708e28634a, type: 2}
   - {fileID: 11400000, guid: 881a14570bbc49640be57f1a868814dc, type: 2}
@@ -37,3 +39,6 @@ MonoBehaviour:
   - {fileID: 11400000, guid: c3e8f8bca697c4d4b9a729b692dd5ec0, type: 2}
   - {fileID: 11400000, guid: d1ffead0b1c5efe4483446705b725d57, type: 2}
   - {fileID: 11400000, guid: 83de3fedaffccb549806984603b390cb, type: 2}
+  ShowPrimeTweenControls: 1
+  AutoInstallPrimeTweenOnOpen: 0
+  PrimeTweenTgzPath: 

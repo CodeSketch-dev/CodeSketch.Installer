@@ -26,6 +26,29 @@ namespace CodeSketch.Installer.Editor
         static readonly Regex FolderVersionRegex = new Regex(@"(?<name>.+?)[-_ ]v?(?<ver>\d+(?:\.\d+)*([-_][A-Za-z0-9]+)?)",
             RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
+        // Cache directories under Assets/ and Packages/ to avoid repeated expensive AllDirectories scans
+        static List<string> _assetDirectoriesCache = null;
+        static DateTime _assetCacheTime = DateTime.MinValue;
+        const int AssetCacheTTLSeconds = 3;
+
+        static void EnsureAssetDirectoryCache()
+        {
+            try
+            {
+                if (_assetDirectoriesCache != null && (DateTime.UtcNow - _assetCacheTime).TotalSeconds < AssetCacheTTLSeconds)
+                    return;
+
+                var root = Path.GetFullPath(Path.Combine(Application.dataPath, ".."));
+                var list = new List<string>();
+                try { list.AddRange(Directory.GetDirectories(Path.Combine(root, "Assets"), "*", SearchOption.AllDirectories)); } catch { }
+                try { list.AddRange(Directory.GetDirectories(Path.Combine(root, "Packages"), "*", SearchOption.AllDirectories)); } catch { }
+
+                _assetDirectoriesCache = list;
+                _assetCacheTime = DateTime.UtcNow;
+            }
+            catch { }
+        }
+
         public static List<UnityPackageEntry> FindUnityPackagesInRepo()
         {
             var root = Path.GetFullPath(Path.Combine(Application.dataPath, ".."));
@@ -99,6 +122,9 @@ namespace CodeSketch.Installer.Editor
             var list = new List<UnityPackageEntry>();
 
 
+            // Ensure directory cache is fresh before detecting installed versions
+            EnsureAssetDirectoryCache();
+
             foreach (var f in candidates.OrderByDescending(f =>
                 File.Exists(f) ? File.GetLastWriteTimeUtc(f) : (Directory.Exists(f) ? Directory.GetLastWriteTimeUtc(f) : DateTime.MinValue)))
             {
@@ -113,6 +139,7 @@ namespace CodeSketch.Installer.Editor
                     ver = m.Groups["ver"].Value.Trim();
                 }
 
+                // Use cached directory list inside GetInstalledVersion/GetInstalledPath to avoid rescanning
                 var entry = new UnityPackageEntry
                 {
                     Name = name,
@@ -131,20 +158,13 @@ namespace CodeSketch.Installer.Editor
         // naive detection: scan Assets and Packages folder names for installed folder that matches name+version
         public static string GetInstalledVersion(string packageName)
         {
-            var root = Path.GetFullPath(Path.Combine(Application.dataPath, ".."));
+            // Use cached directory list to avoid expensive repeated AllDirectories scans
+            EnsureAssetDirectoryCache();
             var candidates = new List<string>();
-
-            try
+            if (_assetDirectoriesCache != null)
             {
-                candidates.AddRange(Directory.GetDirectories(Path.Combine(root, "Assets"), "*", SearchOption.AllDirectories));
+                candidates.AddRange(_assetDirectoriesCache);
             }
-            catch { }
-
-            try
-            {
-                candidates.AddRange(Directory.GetDirectories(Path.Combine(root, "Packages"), "*", SearchOption.AllDirectories));
-            }
-            catch { }
 
             string bestVer = null;
             string foundPath = null;

@@ -891,6 +891,100 @@ namespace CodeSketch.Installer.Editor
             catch { }
         }
 
+        UnityPackageAsset FindUnityPackageAssetForFilePath(string filePath)
+        {
+            try
+            {
+                var guids = AssetDatabase.FindAssets("t:UnityPackageAsset");
+                foreach (var g in guids)
+                {
+                    var path = AssetDatabase.GUIDToAssetPath(g);
+                    var a = AssetDatabase.LoadAssetAtPath<UnityPackageAsset>(path);
+                    if (a == null) continue;
+
+                    // compare by filename or by explicit path
+                    var fileName = Path.GetFileName(a.PackagePath ?? string.Empty);
+                    if (!string.IsNullOrEmpty(fileName) && filePath.EndsWith(fileName, StringComparison.OrdinalIgnoreCase))
+                        return a;
+
+                    if (!string.IsNullOrEmpty(a.PackagePath))
+                    {
+                        try
+                        {
+                            var root = Path.GetFullPath(Path.Combine(Application.dataPath, ".."));
+                            var candidate = Path.Combine(root, a.PackagePath);
+                            if (string.Equals(Path.GetFullPath(candidate), Path.GetFullPath(filePath), StringComparison.OrdinalIgnoreCase))
+                                return a;
+                        }
+                        catch { }
+                    }
+                }
+            }
+            catch { }
+            return null;
+        }
+
+        UnityPackageAsset CreateUnityPackageAssetForEntry(CodeSketch.Installer.Editor.UnityPackagesUtils.UnityPackageEntry entry)
+        {
+            try
+            {
+                var inst = CreateInstance<UnityPackageAsset>();
+                inst.Name = entry.Name;
+                // If the detected file is inside the project root, store a repo-relative path so it resolves on other machines
+                try
+                {
+                    var root = Path.GetFullPath(Path.Combine(Application.dataPath, ".."));
+                    if (!string.IsNullOrEmpty(entry.FilePath))
+                    {
+                        var full = Path.GetFullPath(entry.FilePath);
+                        if (full.StartsWith(root, StringComparison.OrdinalIgnoreCase))
+                        {
+                            var rel = full.Substring(root.Length).TrimStart(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar).Replace("\\", "/");
+                            // ensure relative path starts with Assets/ or Packages/
+                            if (!rel.StartsWith("Assets/", StringComparison.OrdinalIgnoreCase) && !rel.StartsWith("Packages/", StringComparison.OrdinalIgnoreCase))
+                                rel = Path.GetFileName(full);
+                            inst.PackagePath = rel;
+                        }
+                        else
+                        {
+                            inst.PackagePath = Path.GetFileName(full);
+                        }
+                    }
+                    else
+                    {
+                        inst.PackagePath = Path.GetFileName(entry.FilePath ?? string.Empty);
+                    }
+                }
+                catch
+                {
+                    inst.PackagePath = Path.GetFileName(entry.FilePath ?? string.Empty);
+                }
+                inst.IsEssential = true;
+
+                var folder = "Assets/CodeSketch.Installer/Editor/Third-Party/PackageAssets";
+                if (!AssetDatabase.IsValidFolder("Assets/CodeSketch.Installer/Editor"))
+                {
+                    AssetDatabase.CreateFolder("Assets/CodeSketch.Installer", "Editor");
+                }
+                if (!AssetDatabase.IsValidFolder("Assets/CodeSketch.Installer/Editor/Third-Party"))
+                {
+                    AssetDatabase.CreateFolder("Assets/CodeSketch.Installer/Editor", "Third-Party");
+                }
+                if (!AssetDatabase.IsValidFolder(folder))
+                {
+                    AssetDatabase.CreateFolder("Assets/CodeSketch.Installer/Editor/Third-Party", "PackageAssets");
+                }
+
+                var safeName = System.Text.RegularExpressions.Regex.Replace(entry.Name ?? "package", "[^a-zA-Z0-9_-]", "_");
+                var path = Path.Combine(folder, safeName + ".asset").Replace("\\", "/");
+                AssetDatabase.CreateAsset(inst, path);
+                AssetDatabase.SaveAssets();
+                return inst;
+            }
+            catch { }
+            return null;
+        }
+
         void InstallNextRequiredPackage()
         {
             if (_requiredInstallQueue.Count == 0)
@@ -908,6 +1002,43 @@ namespace CodeSketch.Installer.Editor
                 MarkResolveNeeded();
                 InstallNextRequiredPackage();
                 return;
+            }
+
+            // handle UnityPackage entries by importing .unitypackage instead of calling UPM Client
+            if (pkg.InstallType == UPMPackageInstallType.UnityPackage)
+            {
+                try
+                {
+                    BeginBusy($"Importing {pkg.Name}...");
+
+                    string path = null;
+                    try { if (!string.IsNullOrEmpty(pkg.GitUrl) && File.Exists(pkg.GitUrl)) path = pkg.GitUrl; } catch { }
+
+                    if (string.IsNullOrEmpty(path))
+                    {
+                        var found = CodeSketch.Installer.Editor.UnityPackagesUtils.FindUnityPackagesInRepo();
+                        if (found != null)
+                        {
+                            var match = found.FirstOrDefault(x => string.Equals(x.Name, pkg.PackageName, StringComparison.OrdinalIgnoreCase)
+                                                                  || (!string.IsNullOrEmpty(x.FilePath) && x.FilePath.EndsWith(pkg.GitUrl, StringComparison.OrdinalIgnoreCase))
+                                                                  || (!string.IsNullOrEmpty(x.FilePath) && Path.GetFileName(x.FilePath).Equals(pkg.GitUrl, StringComparison.OrdinalIgnoreCase)));
+                            if (match != null) path = match.FilePath;
+                        }
+                    }
+
+                    if (!string.IsNullOrEmpty(path))
+                    {
+                        CodeSketch.Installer.Editor.UnityPackagesUtils.ImportUnityPackage(path, pkg.Name);
+                        EditorApplication.delayCall += () =>
+                        {
+                            AssetDatabase.Refresh();
+                            EndBusy();
+                            InstallNextRequiredPackage();
+                        };
+                        return;
+                    }
+                }
+                catch { }
             }
 
             _addRequest = Client.Add(pkg.GetInstallString());
@@ -1002,78 +1133,7 @@ namespace CodeSketch.Installer.Editor
         {
             GUILayout.Label("Third-Party Packages", EditorStyles.boldLabel);
 
-            // PrimeTween quick controls (optional)
-            try
-            {
-                if (_settings != null && _settings.ShowPrimeTweenControls)
-                {
-                    GUILayout.Space(6);
-                    GUILayout.BeginVertical(EditorStyles.helpBox);
-                    GUILayout.Label("PrimeTween (Pro)", EditorStyles.boldLabel);
-
-                    bool installed = false;
-                    // try to call our cloned inspector check method
-                    try
-                    {
-                        var primType = AppDomain.CurrentDomain.GetAssemblies()
-                            .SelectMany(a => { try { return a.GetTypes(); } catch { return new Type[0]; } })
-                            .FirstOrDefault(t => t.Name == "CodeSketchPrimeTweenInstallerInspector" || (t.Name == "InstallerInspector" && t.Namespace == "PrimeTween"));
-                        if (primType != null)
-                        {
-                            var check = primType.GetMethod("CheckPluginInstalled", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
-                            if (check != null)
-                                installed = (bool)check.Invoke(null, null);
-                        }
-                    }
-                    catch { }
-
-                    GUILayout.BeginHorizontal();
-                    if (!installed)
-                    {
-                        if (GUILayout.Button("Install PrimeTween Pro", GUILayout.Width(180)))
-                        {
-                            try
-                            {
-                                var primType = AppDomain.CurrentDomain.GetAssemblies()
-                                    .SelectMany(a => { try { return a.GetTypes(); } catch { return new Type[0]; } })
-                                    .FirstOrDefault(t => t.Name == "CodeSketchPrimeTweenInstallerInspector" || (t.Name == "InstallerInspector" && t.Namespace == "PrimeTween"));
-                                var install = primType?.GetMethod("InstallPlugin", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
-                                install?.Invoke(null, null);
-                                RefreshPackageState();
-                            }
-                            catch (Exception ex) { Debug.LogWarning(ex.Message); }
-                        }
-                    }
-                    else
-                    {
-                        if (GUILayout.Button("Update PrimeTween Pro", GUILayout.Width(180)))
-                        {
-                            try
-                            {
-                                var primType = AppDomain.CurrentDomain.GetAssemblies()
-                                    .SelectMany(a => { try { return a.GetTypes(); } catch { return new Type[0]; } })
-                                    .FirstOrDefault(t => t.Name == "CodeSketchPrimeTweenInstallerInspector" || (t.Name == "InstallerInspector" && t.Namespace == "PrimeTween"));
-                                var install = primType?.GetMethod("InstallPlugin", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
-                                install?.Invoke(null, null);
-                                RefreshPackageState();
-                            }
-                            catch (Exception ex) { Debug.LogWarning(ex.Message); }
-                        }
-
-                        if (GUILayout.Button("Uninstall PrimeTween", GUILayout.Width(160)))
-                        {
-                            if (EditorUtility.DisplayDialog("Uninstall PrimeTween", "Remove PrimeTween package from project?", "Yes", "Cancel"))
-                            {
-                                Client.Remove("com.kyrylokuzyk.primetween");
-                                EditorApplication.delayCall += () => { RefreshPackageState(); Repaint(); };
-                            }
-                        }
-                    }
-                    GUILayout.EndHorizontal();
-                    GUILayout.EndVertical();
-                }
-            }
-            catch { }
+            // PrimeTween quick controls removed to simplify Third-Party UI
 
             var found = CodeSketch.Installer.Editor.UnityPackagesUtils.FindUnityPackagesInRepo();
 
@@ -1287,6 +1347,63 @@ namespace CodeSketch.Installer.Editor
                     catch { }
                 }
 
+                // allow marking this third-party unitypackage as an "essential" package
+                try
+                {
+                    var existingAsset = FindUnityPackageAssetForFilePath(sel.FilePath);
+                    bool isMarkedEssential = false;
+                    if (existingAsset != null)
+                        isMarkedEssential = existingAsset.IsEssential;
+
+                    if (!isMarkedEssential)
+                    {
+                        if (GUILayout.Button("Mark As Essential", GUILayout.Width(140)))
+                        {
+                            var asset = existingAsset ?? CreateUnityPackageAssetForEntry(sel);
+                            if (asset != null)
+                            {
+                                asset.IsEssential = true;
+                                EditorUtility.SetDirty(asset);
+
+                                if (_settings != null)
+                                {
+                                    if (_settings.EssentialPackages == null) _settings.EssentialPackages = new List<ScriptableObject>();
+                                    if (!_settings.EssentialPackages.Contains(asset))
+                                    {
+                                        _settings.EssentialPackages.Add(asset);
+                                        EditorUtility.SetDirty(_settings);
+                                        AssetDatabase.SaveAssets();
+                                    }
+                                }
+
+                                RefreshPackageState();
+                                Repaint();
+                            }
+                        }
+                    }
+                    else
+                    {
+                        if (GUILayout.Button("Unmark Essential", GUILayout.Width(140)))
+                        {
+                            if (existingAsset != null)
+                            {
+                                existingAsset.IsEssential = false;
+                                EditorUtility.SetDirty(existingAsset);
+
+                                if (_settings != null && _settings.EssentialPackages != null && _settings.EssentialPackages.Remove(existingAsset))
+                                {
+                                    EditorUtility.SetDirty(_settings);
+                                    AssetDatabase.SaveAssets();
+                                }
+
+                                RefreshPackageState();
+                                Repaint();
+                            }
+                        }
+                    }
+                }
+                catch { }
+
                 EditorGUI.EndDisabledGroup();
                 EditorGUILayout.EndHorizontal();
             }
@@ -1425,6 +1542,46 @@ namespace CodeSketch.Installer.Editor
                 MarkResolveNeeded();
                 InstallNextFeaturePackage();
                 return;
+            }
+
+            // Special-case UnityPackage installs: import .unitypackage files instead of using UPM Client
+            if (pkg.InstallType == UPMPackageInstallType.UnityPackage)
+            {
+                try
+                {
+                    BeginBusy($"Importing {pkg.Name}...");
+
+                    // try to resolve full path: if pkg.GitUrl is absolute or relative path, prefer that; otherwise search known third-party locations
+                    string path = null;
+                    try { if (!string.IsNullOrEmpty(pkg.GitUrl) && File.Exists(pkg.GitUrl)) path = pkg.GitUrl; } catch { }
+
+                    if (string.IsNullOrEmpty(path))
+                    {
+                        var found = CodeSketch.Installer.Editor.UnityPackagesUtils.FindUnityPackagesInRepo();
+                        if (found != null)
+                        {
+                            var match = found.FirstOrDefault(x => string.Equals(x.Name, pkg.PackageName, StringComparison.OrdinalIgnoreCase)
+                                                                  || (!string.IsNullOrEmpty(x.FilePath) && x.FilePath.EndsWith(pkg.GitUrl, StringComparison.OrdinalIgnoreCase))
+                                                                  || (!string.IsNullOrEmpty(x.FilePath) && Path.GetFileName(x.FilePath).Equals(pkg.GitUrl, StringComparison.OrdinalIgnoreCase)));
+                            if (match != null) path = match.FilePath;
+                        }
+                    }
+
+                    if (!string.IsNullOrEmpty(path))
+                    {
+                        CodeSketch.Installer.Editor.UnityPackagesUtils.ImportUnityPackage(path, pkg.Name);
+                        EditorApplication.delayCall += () =>
+                        {
+                            AssetDatabase.Refresh();
+                            EndBusy();
+                            InstallNextFeaturePackage();
+                        };
+                        return; // we'll continue from delayCall
+                    }
+                }
+                catch { }
+
+                // fallback: try Client.Add (no-op) and continue
             }
 
             _addRequest = Client.Add(pkg.GetInstallString());
