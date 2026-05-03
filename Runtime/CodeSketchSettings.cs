@@ -52,5 +52,8 @@ namespace CodeSketch.Installer.Runtime
 
         [Tooltip("Tự động cài PrimeTween khi mở Installer (nếu chưa cài).")]
         public bool AutoInstallPrimeTweenOnOpen = false;
+
+        [Tooltip("Đường dẫn tới file .tgz của PrimeTween Pro (nếu có). Giữ trống nếu muốn dùng archive trong repo.")]
+        public string PrimeTweenTgzPath = "";
     }
 }

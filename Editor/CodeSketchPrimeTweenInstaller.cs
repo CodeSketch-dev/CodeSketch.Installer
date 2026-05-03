@@ -35,6 +35,23 @@ namespace CodeSketch.Installer.PrimeTweenCustom
 
         static string GetInternalFilePath(string fileName)
         {
+            // First preference: user-specified path in CodeSketchInstallerSettings
+            try
+            {
+                var settings = UnityEngine.Resources.Load<CodeSketch.Installer.Runtime.CodeSketchInstallerSettings>("CodeSketchInstallerSettings");
+                if (settings != null && !string.IsNullOrEmpty(settings.PrimeTweenTgzPath))
+                {
+                    var userPath = settings.PrimeTweenTgzPath.Replace('\\','/');
+                    if (File.Exists(userPath))
+                        return userPath;
+                    // also check if it's project-relative (Assets/...)
+                    var projectRoot = Path.GetFullPath(Path.Combine(Application.dataPath, "..")).Replace('\\','/');
+                    var candidate = Path.Combine(projectRoot, settings.PrimeTweenTgzPath).Replace('\\','/');
+                    if (File.Exists(candidate))
+                        return candidate;
+                }
+            }
+            catch { }
             // Prefer our copy location inside this project (Editor folder) so it's under source control
             var assetsCandidate = Path.Combine("Assets", "CodeSketch.Installer", "Editor", "PrimeTween", "internal", fileName).Replace('\\','/');
             if (File.Exists(Path.GetFullPath(assetsCandidate)))
