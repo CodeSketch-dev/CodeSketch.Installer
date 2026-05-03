@@ -89,6 +89,13 @@ namespace CodeSketch.Installer.PrimeTweenCustom
                                     var d3 = Path.Combine(dir, "internal", fileName);
                                     if (File.Exists(d3)) return d3;
                                 }
+                                try
+                                {
+                                    var deepMatches = Directory.GetFiles(packagesDir, fileName, SearchOption.AllDirectories);
+                                    if (deepMatches != null && deepMatches.Length > 0)
+                                        return deepMatches[0];
+                                }
+                                catch { }
                             }
                         }
                     }
@@ -141,25 +148,40 @@ namespace CodeSketch.Installer.PrimeTweenCustom
                 var packageCacheDir = Path.Combine(projectRoot, "Library", "PackageCache");
                 if (Directory.Exists(packageCacheDir))
                 {
+                    Debug.Log($"PrimeTweenInstaller: searching PackageCache '{packageCacheDir}' for '{fileName}'");
                     var allDirs = Directory.GetDirectories(packageCacheDir, "*", SearchOption.TopDirectoryOnly);
                     foreach (var dir in allDirs)
                     {
                         var candidate1 = Path.Combine(dir, "Plugins", "PrimeTween", "internal", fileName);
-                        if (File.Exists(candidate1)) return candidate1;
+                        Debug.Log($"PrimeTweenInstaller: testing '{candidate1}'");
+                        if (File.Exists(candidate1)) { Debug.Log($"PrimeTweenInstaller: found '{candidate1}'"); return candidate1; }
                         var candidate1b = Path.Combine(dir, "Editor", "Plugins", "PrimeTween", "internal", fileName);
-                        if (File.Exists(candidate1b)) return candidate1b;
+                        Debug.Log($"PrimeTweenInstaller: testing '{candidate1b}'");
+                        if (File.Exists(candidate1b)) { Debug.Log($"PrimeTweenInstaller: found '{candidate1b}'"); return candidate1b; }
                         var candidate2 = Path.Combine(dir, "PrimeTween", "internal", fileName);
-                        if (File.Exists(candidate2)) return candidate2;
+                        Debug.Log($"PrimeTweenInstaller: testing '{candidate2}'");
+                        if (File.Exists(candidate2)) { Debug.Log($"PrimeTweenInstaller: found '{candidate2}'"); return candidate2; }
                         var candidate3 = Path.Combine(dir, "internal", fileName);
-                        if (File.Exists(candidate3)) return candidate3;
+                        Debug.Log($"PrimeTweenInstaller: testing '{candidate3}'");
+                        if (File.Exists(candidate3)) { Debug.Log($"PrimeTweenInstaller: found '{candidate3}'"); return candidate3; }
                     }
                     try
                     {
                         var matches = Directory.GetFiles(packageCacheDir, fileName, SearchOption.AllDirectories);
                         if (matches != null && matches.Length > 0)
+                        {
+                            Debug.Log($"PrimeTweenInstaller: deep match in PackageCache: '{matches[0]}'");
                             return matches[0];
+                        }
+                        else
+                        {
+                            Debug.Log("PrimeTweenInstaller: no matches found in PackageCache");
+                        }
                     }
-                    catch { }
+                    catch (Exception ex)
+                    {
+                        Debug.LogWarning($"PrimeTweenInstaller: error searching PackageCache: {ex.Message}");
+                    }
                 }
 
                 var packagesDir = Path.Combine(projectRoot, "Packages");
