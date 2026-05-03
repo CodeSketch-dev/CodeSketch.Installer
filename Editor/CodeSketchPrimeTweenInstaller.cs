@@ -303,6 +303,13 @@ namespace CodeSketch.Installer.PrimeTweenCustom
                     try { if (!string.IsNullOrEmpty(tempCopy) && File.Exists(tempCopy)) File.Delete(tempCopy); } catch { }
                 }
             }
+            catch (Exception ex)
+            {
+                Debug.LogError($"PrimeTweenInstaller: exception during install: {ex}");
+                EditorUtility.DisplayDialog("PrimeTween Installer", ex.Message, "OK");
+            }
+
+        }
 
         public override void OnInspectorGUI()
         {
