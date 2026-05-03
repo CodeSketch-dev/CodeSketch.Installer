@@ -68,6 +68,42 @@ namespace PrimeTween
                 }
             }
             catch { }
+            // If installer is packaged and cached (Package Cache or Packages folder), try a few known locations
+            try
+            {
+                var projectRoot = Path.GetFullPath(Path.Combine(Application.dataPath, "..")).Replace('\\', '/');
+                // Packages/{pluginPackageId}/internal/{fileName}
+                var packagesCandidate = Path.Combine(projectRoot, "Packages", pluginPackageId, "internal", fileName).Replace('\\', '/');
+                if (File.Exists(packagesCandidate))
+                    return packagesCandidate;
+
+                // Library/PackageCache/{com.kyrylokuzyk.primetween@version or com.kyrylokuzyk.primetween-...}
+                var packageCacheDir = Path.Combine(projectRoot, "Library", "PackageCache");
+                if (Directory.Exists(packageCacheDir))
+                {
+                    var dirs = Directory.GetDirectories(packageCacheDir, pluginPackageId + "*", SearchOption.TopDirectoryOnly);
+                    foreach (var dir in dirs)
+                    {
+                        var path = Path.Combine(dir, "internal", fileName);
+                        if (File.Exists(path))
+                            return path;
+                    }
+                }
+
+                // Search direct Packages/ folder for a matching package folder
+                var packagesDir = Path.Combine(projectRoot, "Packages");
+                if (Directory.Exists(packagesDir))
+                {
+                    var dirs2 = Directory.GetDirectories(packagesDir, pluginPackageId + "*", SearchOption.TopDirectoryOnly);
+                    foreach (var dir in dirs2)
+                    {
+                        var path = Path.Combine(dir, "internal", fileName);
+                        if (File.Exists(path))
+                            return path;
+                    }
+                }
+            }
+            catch { }
             return assetsCandidate;
         }
         bool isInstalled;
