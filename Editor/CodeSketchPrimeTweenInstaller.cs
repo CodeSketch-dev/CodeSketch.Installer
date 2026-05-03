@@ -234,8 +234,39 @@ namespace CodeSketch.Installer.PrimeTweenCustom
                 string full = Path.GetFullPath(TgzPath);
                 if (!File.Exists(full))
                 {
-                    EditorUtility.DisplayDialog("PrimeTween Installer", $"Archive not found: {full}", "OK");
-                    return;
+                    // Attempt to locate the archive inside Library/PackageCache or Packages if TgzPath was project-relative but missing
+                    try
+                    {
+                        var fileName = Path.GetFileName(TgzPath);
+                        var projectRoot = Path.GetFullPath(Path.Combine(Application.dataPath, ".."));
+                        var packageCacheDir = Path.Combine(projectRoot, "Library", "PackageCache");
+                        if (Directory.Exists(packageCacheDir))
+                        {
+                            var matches = Directory.GetFiles(packageCacheDir, fileName, SearchOption.AllDirectories);
+                            if (matches != null && matches.Length > 0)
+                            {
+                                full = matches[0];
+                            }
+                        }
+
+                        if (!File.Exists(full))
+                        {
+                            var packagesDir = Path.Combine(projectRoot, "Packages");
+                            if (Directory.Exists(packagesDir))
+                            {
+                                var matches2 = Directory.GetFiles(packagesDir, fileName, SearchOption.AllDirectories);
+                                if (matches2 != null && matches2.Length > 0)
+                                    full = matches2[0];
+                            }
+                        }
+                    }
+                    catch { }
+
+                    if (!File.Exists(full))
+                    {
+                        EditorUtility.DisplayDialog("PrimeTween Installer", $"Archive not found: {full}", "OK");
+                        return;
+                    }
                 }
 
                 var uri = new Uri(full).AbsoluteUri;
