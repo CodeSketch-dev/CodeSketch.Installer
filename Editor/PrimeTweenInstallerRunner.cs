@@ -69,26 +69,7 @@ namespace CodeSketch.Installer.Editor
                     installed = listReq.Result.Any(r => r.name == "com.kyrylokuzyk.primetween");
                 }
 
-                // Ensure our cloned installer asset exists so users see our inspector UI
-                try
-                {
-                    var assetType = AppDomain.CurrentDomain.GetAssemblies()
-                        .SelectMany(a => { try { return a.GetTypes(); } catch { return new Type[0]; } })
-                        .FirstOrDefault(t => t.Name == "CodeSketchPrimeTweenInstallerAsset");
-                    if (assetType != null)
-                    {
-                        var assetPath = "Assets/CodeSketch.Installer/Editor/CodeSketchPrimeTweenInstaller.asset";
-                        var existing = AssetDatabase.LoadAssetAtPath(assetPath, assetType);
-                        if (existing == null)
-                        {
-                            var so = ScriptableObject.CreateInstance(assetType);
-                            AssetDatabase.CreateAsset((UnityEngine.Object)so, assetPath);
-                            AssetDatabase.SaveAssets();
-                            Debug.Log($"Created {assetPath} for CodeSketch PrimeTween installer.");
-                        }
-                    }
-                }
-                catch { }
+                // Runner no longer creates assets automatically.
 
                 if (!installed)
                 {

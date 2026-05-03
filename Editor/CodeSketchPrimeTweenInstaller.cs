@@ -52,8 +52,8 @@ namespace CodeSketch.Installer.PrimeTweenCustom
                 }
             }
             catch { }
-            // Prefer our copy location inside this project (Editor folder) so it's under source control
-            var assetsCandidate = Path.Combine("Assets", "CodeSketch.Installer", "Editor", "PrimeTween", "internal", fileName).Replace('\\','/');
+            // Prefer our copy location inside this project (Plugins folder) so it's under source control
+            var assetsCandidate = Path.Combine("Assets", "CodeSketch.Installer", "Plugins", "PrimeTween", "internal", fileName).Replace('\\','/');
             if (File.Exists(Path.GetFullPath(assetsCandidate)))
                 return assetsCandidate;
 
@@ -90,6 +90,8 @@ namespace CodeSketch.Installer.PrimeTweenCustom
             try
             {
                 var projectRoot = Path.GetFullPath(Path.Combine(Application.dataPath, "..")).Replace('\\','/');
+                // Also check Packages/<pkg>/internal and search PackageCache/Packages for any package that contains
+                // Plugins/PrimeTween/internal or PrimeTween/internal (covers CodeSketch installer copied into package cache)
                 var packagesCandidate = Path.Combine(projectRoot, "Packages", pluginPackageId, "internal", fileName).Replace('\\','/');
                 if (File.Exists(packagesCandidate))
                     return packagesCandidate;
@@ -97,24 +99,31 @@ namespace CodeSketch.Installer.PrimeTweenCustom
                 var packageCacheDir = Path.Combine(projectRoot, "Library", "PackageCache");
                 if (Directory.Exists(packageCacheDir))
                 {
-                    var dirs = Directory.GetDirectories(packageCacheDir, pluginPackageId + "*", SearchOption.TopDirectoryOnly);
-                    foreach (var dir in dirs)
+                    var allDirs = Directory.GetDirectories(packageCacheDir, "*", SearchOption.TopDirectoryOnly);
+                    foreach (var dir in allDirs)
                     {
-                        var path = Path.Combine(dir, "internal", fileName);
-                        if (File.Exists(path))
-                            return path;
+                        var candidate1 = Path.Combine(dir, "Plugins", "PrimeTween", "internal", fileName);
+                        if (File.Exists(candidate1)) return candidate1;
+                        var candidate2 = Path.Combine(dir, "PrimeTween", "internal", fileName);
+                        if (File.Exists(candidate2)) return candidate2;
+                        // also check nested internal directly
+                        var candidate3 = Path.Combine(dir, "internal", fileName);
+                        if (File.Exists(candidate3)) return candidate3;
                     }
                 }
 
                 var packagesDir = Path.Combine(projectRoot, "Packages");
                 if (Directory.Exists(packagesDir))
                 {
-                    var dirs2 = Directory.GetDirectories(packagesDir, pluginPackageId + "*", SearchOption.TopDirectoryOnly);
-                    foreach (var dir in dirs2)
+                    var allPkgDirs = Directory.GetDirectories(packagesDir, "*", SearchOption.TopDirectoryOnly);
+                    foreach (var dir in allPkgDirs)
                     {
-                        var path = Path.Combine(dir, "internal", fileName);
-                        if (File.Exists(path))
-                            return path;
+                        var candidate1 = Path.Combine(dir, "Plugins", "PrimeTween", "internal", fileName);
+                        if (File.Exists(candidate1)) return candidate1;
+                        var candidate2 = Path.Combine(dir, "PrimeTween", "internal", fileName);
+                        if (File.Exists(candidate2)) return candidate2;
+                        var candidate3 = Path.Combine(dir, "internal", fileName);
+                        if (File.Exists(candidate3)) return candidate3;
                     }
                 }
             }
@@ -150,11 +159,37 @@ namespace CodeSketch.Installer.PrimeTweenCustom
             {
                 MoveAndRenameTgzArchive();
             }
+            try
+            {
+                Debug.Log($"PrimeTweenInstaller: TgzPath='{TgzPath}', NewTgzPath='{NewTgzPath}'");
+                string full = Path.GetFullPath(TgzPath);
+                Debug.Log($"PrimeTweenInstaller: full path='{full}'");
+                if (!File.Exists(full))
+                {
+                    Debug.LogError($"PrimeTweenInstaller: archive not found at '{full}'");
+                    EditorUtility.DisplayDialog("PrimeTween Installer", $"Archive not found: {full}", "OK");
+                    return;
+                }
 
-            string full = Path.GetFullPath(TgzPath);
-            var uri = new Uri(full).AbsoluteUri;
-            var addRequest = Client.Add(uri);
-            while (!addRequest.IsCompleted) { }
+                var uri = new Uri(full).AbsoluteUri;
+                Debug.Log($"PrimeTweenInstaller: adding package from uri='{uri}'");
+                var addRequest = Client.Add(uri);
+                while (!addRequest.IsCompleted) { }
+                if (addRequest.Status == StatusCode.Success)
+                {
+                    Debug.Log("PrimeTween installed successfully.");
+                }
+                else
+                {
+                    Debug.LogError($"PrimeTweenInstaller: install failed. Status={addRequest.Status}, Error={addRequest.Error?.message}");
+                    EditorUtility.DisplayDialog("PrimeTween Installer", $"Install failed: {addRequest.Error?.message}", "OK");
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"PrimeTweenInstaller: exception during install: {ex}");
+                EditorUtility.DisplayDialog("PrimeTween Installer", ex.Message, "OK");
+            }
         }
 
         public override void OnInspectorGUI()
