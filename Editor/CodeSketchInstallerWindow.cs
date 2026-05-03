@@ -1002,6 +1002,79 @@ namespace CodeSketch.Installer.Editor
         {
             GUILayout.Label("Third-Party Packages", EditorStyles.boldLabel);
 
+            // PrimeTween quick controls (optional)
+            try
+            {
+                if (_settings != null && _settings.ShowPrimeTweenControls)
+                {
+                    GUILayout.Space(6);
+                    GUILayout.BeginVertical(EditorStyles.helpBox);
+                    GUILayout.Label("PrimeTween (Pro)", EditorStyles.boldLabel);
+
+                    bool installed = false;
+                    // try to call our cloned inspector check method
+                    try
+                    {
+                        var primType = AppDomain.CurrentDomain.GetAssemblies()
+                            .SelectMany(a => { try { return a.GetTypes(); } catch { return new Type[0]; } })
+                            .FirstOrDefault(t => t.Name == "CodeSketchPrimeTweenInstallerInspector" || (t.Name == "InstallerInspector" && t.Namespace == "PrimeTween"));
+                        if (primType != null)
+                        {
+                            var check = primType.GetMethod("CheckPluginInstalled", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+                            if (check != null)
+                                installed = (bool)check.Invoke(null, null);
+                        }
+                    }
+                    catch { }
+
+                    GUILayout.BeginHorizontal();
+                    if (!installed)
+                    {
+                        if (GUILayout.Button("Install PrimeTween Pro", GUILayout.Width(180)))
+                        {
+                            try
+                            {
+                                var primType = AppDomain.CurrentDomain.GetAssemblies()
+                                    .SelectMany(a => { try { return a.GetTypes(); } catch { return new Type[0]; } })
+                                    .FirstOrDefault(t => t.Name == "CodeSketchPrimeTweenInstallerInspector" || (t.Name == "InstallerInspector" && t.Namespace == "PrimeTween"));
+                                var install = primType?.GetMethod("InstallPlugin", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+                                install?.Invoke(null, null);
+                                RefreshPackageState();
+                            }
+                            catch (Exception ex) { Debug.LogWarning(ex.Message); }
+                        }
+                    }
+                    else
+                    {
+                        if (GUILayout.Button("Update PrimeTween Pro", GUILayout.Width(180)))
+                        {
+                            try
+                            {
+                                var primType = AppDomain.CurrentDomain.GetAssemblies()
+                                    .SelectMany(a => { try { return a.GetTypes(); } catch { return new Type[0]; } })
+                                    .FirstOrDefault(t => t.Name == "CodeSketchPrimeTweenInstallerInspector" || (t.Name == "InstallerInspector" && t.Namespace == "PrimeTween"));
+                                var install = primType?.GetMethod("InstallPlugin", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+                                install?.Invoke(null, null);
+                                RefreshPackageState();
+                            }
+                            catch (Exception ex) { Debug.LogWarning(ex.Message); }
+                        }
+
+                        if (GUILayout.Button("Uninstall PrimeTween", GUILayout.Width(160)))
+                        {
+                            if (EditorUtility.DisplayDialog("Uninstall PrimeTween", "Remove PrimeTween package from project?", "Yes", "Cancel"))
+                            {
+                                Client.Remove("com.kyrylokuzyk.primetween");
+                                EditorApplication.delayCall += () => { RefreshPackageState(); Repaint(); };
+                            }
+                        }
+                    }
+                    GUILayout.EndHorizontal();
+                    GUILayout.EndVertical();
+                }
+            }
+            catch { }
+
             var found = CodeSketch.Installer.Editor.UnityPackagesUtils.FindUnityPackagesInRepo();
 
             if (found == null || found.Count == 0)

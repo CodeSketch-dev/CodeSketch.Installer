@@ -41,5 +41,16 @@ namespace CodeSketch.Installer.Runtime
         [Header("Feature Toggles (Scripting Define Symbols)")]
         [Tooltip("Danh sách feature bật/tắt bằng define symbols")]
         public List<InstallerFeatureDefinitionAsset> Features = new();
+
+        // =====================================================
+        // THIRD-PARTY INTEGRATIONS
+        // =====================================================
+
+        [Header("Third-Party Integrations")]
+        [Tooltip("Hiển thị điều khiển cài đặt PrimeTween trong Installer window")]
+        public bool ShowPrimeTweenControls = true;
+
+        [Tooltip("Tự động cài PrimeTween khi mở Installer (nếu chưa cài).")]
+        public bool AutoInstallPrimeTweenOnOpen = false;
     }
 }
