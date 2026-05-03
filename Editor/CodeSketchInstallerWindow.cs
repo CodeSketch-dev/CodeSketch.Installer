@@ -1385,6 +1385,17 @@ namespace CodeSketch.Installer.Editor
 
                                 RefreshPackageState();
                                 Repaint();
+
+                                // Immediately start install for this newly marked essential package
+                                try
+                                {
+                                    var entry = (asset as IUPMPackageAsset)?.ToEntry();
+                                    if (entry != null && !IsInstalled(entry))
+                                    {
+                                        StartInstallPackages(new List<UPMInstallEntry> { entry });
+                                    }
+                                }
+                                catch { }
                             }
                         }
                     }
@@ -1692,6 +1703,17 @@ namespace CodeSketch.Installer.Editor
         {
             if (pkg.IsDependency)
                 return CodeSketch_ManifestUtility.HasDependency(pkg.PackageName);
+
+            // If this is a unitypackage entry, detect installation by scanning Assets/Packages
+            if (pkg.InstallType == UPMPackageInstallType.UnityPackage)
+            {
+                try
+                {
+                    var ver = CodeSketch.Installer.Editor.UnityPackagesUtils.GetInstalledVersion(pkg.Name);
+                    return !string.IsNullOrEmpty(ver);
+                }
+                catch { }
+            }
 
             return _installedPackages.Contains(pkg.PackageName);
         }
