@@ -88,44 +88,59 @@ namespace CodeSketch.Installer.PrimeTweenCustom
 
             // If installer is packaged and cached (Package Cache or Packages folder), try a few known locations
             try
-            {
-                var projectRoot = Path.GetFullPath(Path.Combine(Application.dataPath, "..")).Replace('\\','/');
-                // Also check Packages/<pkg>/internal and search PackageCache/Packages for any package that contains
-                // Plugins/PrimeTween/internal or PrimeTween/internal (covers CodeSketch installer copied into package cache)
-                var packagesCandidate = Path.Combine(projectRoot, "Packages", pluginPackageId, "internal", fileName).Replace('\\','/');
-                if (File.Exists(packagesCandidate))
-                    return packagesCandidate;
-
-                var packageCacheDir = Path.Combine(projectRoot, "Library", "PackageCache");
-                if (Directory.Exists(packageCacheDir))
                 {
-                    var allDirs = Directory.GetDirectories(packageCacheDir, "*", SearchOption.TopDirectoryOnly);
-                    foreach (var dir in allDirs)
-                    {
-                        var candidate1 = Path.Combine(dir, "Plugins", "PrimeTween", "internal", fileName);
-                        if (File.Exists(candidate1)) return candidate1;
-                        var candidate2 = Path.Combine(dir, "PrimeTween", "internal", fileName);
-                        if (File.Exists(candidate2)) return candidate2;
-                        // also check nested internal directly
-                        var candidate3 = Path.Combine(dir, "internal", fileName);
-                        if (File.Exists(candidate3)) return candidate3;
-                    }
-                }
+                    var projectRoot = Path.GetFullPath(Path.Combine(Application.dataPath, "..")).Replace('\\','/');
+                    var packagesCandidate = Path.Combine(projectRoot, "Packages", pluginPackageId, "internal", fileName).Replace('\\','/');
+                    if (File.Exists(packagesCandidate))
+                        return packagesCandidate;
 
-                var packagesDir = Path.Combine(projectRoot, "Packages");
-                if (Directory.Exists(packagesDir))
-                {
-                    var allPkgDirs = Directory.GetDirectories(packagesDir, "*", SearchOption.TopDirectoryOnly);
-                    foreach (var dir in allPkgDirs)
+                    var packageCacheDir = Path.Combine(projectRoot, "Library", "PackageCache");
+                    if (Directory.Exists(packageCacheDir))
                     {
-                        var candidate1 = Path.Combine(dir, "Plugins", "PrimeTween", "internal", fileName);
-                        if (File.Exists(candidate1)) return candidate1;
-                        var candidate2 = Path.Combine(dir, "PrimeTween", "internal", fileName);
-                        if (File.Exists(candidate2)) return candidate2;
-                        var candidate3 = Path.Combine(dir, "internal", fileName);
-                        if (File.Exists(candidate3)) return candidate3;
+                        var allDirs = Directory.GetDirectories(packageCacheDir, "*", SearchOption.TopDirectoryOnly);
+                        foreach (var dir in allDirs)
+                        {
+                            var candidate1 = Path.Combine(dir, "Plugins", "PrimeTween", "internal", fileName);
+                            if (File.Exists(candidate1)) return candidate1;
+                            var candidate1b = Path.Combine(dir, "Editor", "Plugins", "PrimeTween", "internal", fileName);
+                            if (File.Exists(candidate1b)) return candidate1b;
+                            var candidate2 = Path.Combine(dir, "PrimeTween", "internal", fileName);
+                            if (File.Exists(candidate2)) return candidate2;
+                            var candidate3 = Path.Combine(dir, "internal", fileName);
+                            if (File.Exists(candidate3)) return candidate3;
+                        }
+                        try
+                        {
+                            var matches = Directory.GetFiles(packageCacheDir, fileName, SearchOption.AllDirectories);
+                            if (matches != null && matches.Length > 0)
+                                return matches[0];
+                        }
+                        catch { }
                     }
-                }
+
+                    var packagesDir = Path.Combine(projectRoot, "Packages");
+                    if (Directory.Exists(packagesDir))
+                    {
+                        var allPkgDirs = Directory.GetDirectories(packagesDir, "*", SearchOption.TopDirectoryOnly);
+                        foreach (var dir in allPkgDirs)
+                        {
+                            var candidate1 = Path.Combine(dir, "Plugins", "PrimeTween", "internal", fileName);
+                            if (File.Exists(candidate1)) return candidate1;
+                            var candidate1b = Path.Combine(dir, "Editor", "Plugins", "PrimeTween", "internal", fileName);
+                            if (File.Exists(candidate1b)) return candidate1b;
+                            var candidate2 = Path.Combine(dir, "PrimeTween", "internal", fileName);
+                            if (File.Exists(candidate2)) return candidate2;
+                            var candidate3 = Path.Combine(dir, "internal", fileName);
+                            if (File.Exists(candidate3)) return candidate3;
+                        }
+                        try
+                        {
+                            var matches2 = Directory.GetFiles(packagesDir, fileName, SearchOption.AllDirectories);
+                            if (matches2 != null && matches2.Length > 0)
+                                return matches2[0];
+                        }
+                        catch { }
+                    }
             }
             catch { }
 
