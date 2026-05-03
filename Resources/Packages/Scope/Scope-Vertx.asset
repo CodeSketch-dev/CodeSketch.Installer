@@ -20,4 +20,4 @@ MonoBehaviour:
   RegistryScopes:
   - com.vertx
   IsDependency: 1
-  IsEssential: 0
+  IsEssential: 1
