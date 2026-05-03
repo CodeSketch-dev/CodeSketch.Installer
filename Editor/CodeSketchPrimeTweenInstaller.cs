@@ -269,26 +269,40 @@ namespace CodeSketch.Installer.PrimeTweenCustom
                     }
                 }
 
-                var uri = new Uri(full).AbsoluteUri;
-                Debug.Log($"PrimeTweenInstaller: adding package from uri='{uri}'");
-                var addRequest = Client.Add(uri);
-                while (!addRequest.IsCompleted) { }
-                if (addRequest.Status == StatusCode.Success)
+                string tempCopy = null;
+                try
                 {
-                    Debug.Log("PrimeTween installed successfully.");
+                    if (full.Contains("PackageCache") || full.Contains("@"))
+                    {
+                        var fileName = Path.GetFileName(full);
+                        tempCopy = Path.Combine(Path.GetTempPath(), fileName);
+                        File.Copy(full, tempCopy, true);
+                        full = tempCopy;
+                    }
+
+                    var uri = new Uri(full).AbsoluteUri;
+                    var addRequest = Client.Add(uri);
+                    while (!addRequest.IsCompleted) { }
+                    if (addRequest.Status == StatusCode.Success)
+                    {
+                        Debug.Log("PrimeTween installed successfully.");
+                    }
+                    else
+                    {
+                        Debug.LogError($"PrimeTweenInstaller: install failed. Status={addRequest.Status}, Error={addRequest.Error?.message}");
+                        EditorUtility.DisplayDialog("PrimeTween Installer", $"Install failed: {addRequest.Error?.message}", "OK");
+                    }
                 }
-                else
+                catch (Exception ex)
                 {
-                    Debug.LogError($"PrimeTweenInstaller: install failed. Status={addRequest.Status}, Error={addRequest.Error?.message}");
-                    EditorUtility.DisplayDialog("PrimeTween Installer", $"Install failed: {addRequest.Error?.message}", "OK");
+                    Debug.LogError($"PrimeTweenInstaller: exception during install: {ex}");
+                    EditorUtility.DisplayDialog("PrimeTween Installer", ex.Message, "OK");
+                }
+                finally
+                {
+                    try { if (!string.IsNullOrEmpty(tempCopy) && File.Exists(tempCopy)) File.Delete(tempCopy); } catch { }
                 }
             }
-            catch (Exception ex)
-            {
-                Debug.LogError($"PrimeTweenInstaller: exception during install: {ex}");
-                EditorUtility.DisplayDialog("PrimeTween Installer", ex.Message, "OK");
-            }
-        }
 
         public override void OnInspectorGUI()
         {
