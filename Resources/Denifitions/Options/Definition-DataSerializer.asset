@@ -18,11 +18,7 @@ MonoBehaviour:
     UsePackages: 0
     Packages: []
   - Label: OdinSerializer
-    DefineSymbol: CODESKETCH_ODINSERIALIZER
-    UsePackages: 0
-    Packages: []
-  - Label: Memory Pack
-    DefineSymbol: CODESKETCH_MEMORYPACK
+    DefineSymbol: DATA_ODINSERIALIZER
     UsePackages: 0
     Packages: []
   DefaultOptionIndex: 0
